@@ -1,7 +1,8 @@
 # Kids Language-Learning App — Design
 
-A versioned record of the architecture, scope, and decisions. Operational conventions
-and commands live in [../CLAUDE.md](../CLAUDE.md); this document is the "why".
+A versioned record of the architecture, scope, and decisions. The source requirements are in
+[PRD.md](PRD.md); operational conventions and commands live in [../CLAUDE.md](../CLAUDE.md);
+this document is the "why".
 
 ## 1. Context
 A play-first, cross-platform Flutter app that teaches young children (ages 6–10, home and
