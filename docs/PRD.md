@@ -5,7 +5,9 @@
 > **Note (added when versioning into the repo):** this is the original draft v0.1, reproduced
 > verbatim below. The three "to confirm" items have since been resolved for the current build:
 > **age band = 6–10**, **target language = Japanese** (data-driven), **use context = mixed home +
-> classroom**. See [design.md](design.md) for the decisions and scope built against these.
+> classroom**. See [design.md](design.md) for the decisions and scope built against these, and
+> [implementation-plan.md](implementation-plan.md) for the phased roadmap (M0–M3) and per-feature
+> status mapped back to F1–F4.
 
 ## 1. Overview
 A cross-platform, play-first language-learning app for children, built in Flutter. Learning happens through interactive multimedia activities with adaptive difficulty, while teachers author and maintain the course content.
