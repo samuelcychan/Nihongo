@@ -58,8 +58,9 @@ in `supabase/migrations/`:
 - `0001_init.sql` — tables, **RLS policies**, and **table GRANTs** to `anon`/`authenticated`
   (raw-SQL migrations must grant explicitly; the dashboard would do it automatically).
 - `0002_seed.sql` — the sample "Animals" course (now Japanese: ねこ/いぬ/とり/さかな/うし/あひる).
-- `0003_seed_japanese.sql` — converts an existing Spanish DB to Japanese in place (item UUIDs
-  unchanged so progress stays linked); idempotent.
+- `0003_seed_japanese.sql` — converts an existing Spanish DB to Japanese in place by replacing
+  activity items (new item UUIDs are created, so existing progress links do not carry over);
+  idempotent.
 
 Media: emoji glyphs as pictures + on-device TTS, so no binary assets ship in the slice.
 
