@@ -1,8 +1,8 @@
 # Kids Language-Learning App — Design
 
 A versioned record of the architecture, scope, and decisions. The source requirements are in
-[PRD.md](PRD.md); operational conventions and commands live in [../CLAUDE.md](../CLAUDE.md);
-this document is the "why".
+[PRD.md](PRD.md); the phased delivery roadmap is in [implementation-plan.md](implementation-plan.md);
+operational conventions and commands live in [../CLAUDE.md](../CLAUDE.md); this document is the "why".
 
 ## 1. Context
 A play-first, cross-platform Flutter app that teaches young children (ages 6–10, home and
