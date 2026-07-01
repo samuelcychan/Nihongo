@@ -5,7 +5,7 @@ M0.5 milestone (architecture review + outside-voice pass, both resolved). Each t
 from a specific review finding — no padding. Run with Claude Code or Codex; check boxes as
 you ship. P1 blocks the milestone; P2 should land in the same effort but isn't blocking.
 
-- [ ] **T1 (P1, human: ~1-2h / CC: ~20min)** — Backend infra — Stand up Supabase CLI + Edge Functions in this repo
+- [ ] **T1 (P1, human: ~1-2h / CC: ~20min)** — Backend infra — Stand up Supabase CLI (for Edge Functions/secrets only) + Edge Functions in this repo
   - Surfaced by: Backend-surface finding — no `supabase/functions/` dir exists yet; this
     project was offline-first/client-only through M0
   - Files: `supabase/functions/` (new)

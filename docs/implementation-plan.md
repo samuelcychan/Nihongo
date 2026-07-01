@@ -37,8 +37,9 @@ offline-first results with reconnect outbox (NFR-offline🟡), Android verified 
 
 ## M0.5 — AI Lesson Generator
 **Goal:** replace hand-authored content with AI-generated lessons, directly reducing what
-F4's teacher-CMS needs to cover. Approved via `/office-hours` — see the design doc
-("AI Lesson Generator for Nihongo", Approach A: Generator First) for full rationale. This
+F4's teacher-CMS needs to cover. Approved via external `/office-hours` notes — see the
+design doc ("AI Lesson Generator for Nihongo", Approach A: Generator First) for full
+rationale. This
 is **additive scope, not a swap** — it does not shrink M1 (see M1's note below); the
 future-authoring-work savings it's meant to produce are speculative until M3 actually
 proves out, not a near-term time savings. Placed before M1 because it depends only on M0's
@@ -48,8 +49,9 @@ Flutter work in its own right (see below), not a backend-only detour.
 **Architecture note — this is the project's first backend/server component.** Every prior
 milestone kept Supabase as a sync target only (offline-first, client-driven, per AGENTS.md).
 M0.5 introduces a live server-side dependency (a Supabase Edge Function) and a second class
-of secret the app has never held before. Treat standing this up — CLI auth, deploy, function
-secrets — as its own line of work, not a sub-bullet of "build the generator."
+of secret the app has never held before. Treat standing this up — Supabase CLI auth/deploy
+for Edge Functions and function secrets (while migrations still use the pooler-script flow)
+— as its own line of work, not a sub-bullet of "build the generator."
 
 - **Owns the full vertical, one team (not split with M1):** Edge Function + the "Create a
   lesson" screen (new route in `app_router.dart`, new provider in `app/providers.dart`,
@@ -116,7 +118,7 @@ Flutter app                Edge Function              External
   reject UI
 ```
 Every arrow back to the client needs an explicit error state (timeout, LLM error, schema
-failure, write failure) — see Failure modes below; none of these should fail silently.
+failure, write failure); none of these should fail silently.
 
 ---
 
@@ -195,8 +197,9 @@ surface backed by real data — shippable to a test family/classroom.
   GRANTs; applied via the pooler (see [AGENTS.md](../AGENTS.md)).
 - **Backend surface (new as of M0.5):** this project was offline-first/client-only through
   M0 — no server component, Supabase used only as a sync target. M0.5 changes that. Standing
-  up Supabase CLI auth + Edge Function deploy is real, one-time setup cost, not a detail
-  inside the M0.5 feature work.
+  up Supabase CLI auth + Edge Function deploy/secrets is real, one-time setup cost (for
+  functions only; migrations still run via the pooler script), not a detail inside the M0.5
+  feature work.
 
 ## Out of scope (per PRD §4)
 Live human tutoring, social/multiplayer, AR — revisit post-v1.
