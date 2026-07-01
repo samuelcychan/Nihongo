@@ -5,7 +5,10 @@ Phased roadmap from the current prototype to a PRD-complete v1. Each milestone n
 working conventions are in [../AGENTS.md](../AGENTS.md).
 
 **Legend:** 🟢 done · 🟡 partial · 🔴 not started. PRD refs: **F1** multimedia content,
-**F2** multimodal I/O, **F3** adaptive memory, **F4** teacher authoring, **NFR-*** non-functional.
+**F2** multimodal I/O, **F3** adaptive memory, **F4** teacher authoring. NFR shorthand
+(all from PRD §3 bullets): **NFR-safety** = safety & privacy · **NFR-offline** = offline ·
+**NFR-parent** = parent/guardian dashboard · **NFR-a11y** = accessibility ·
+**NFR-perf** = performance · **NFR-parity** = cross-platform parity.
 
 ---
 
@@ -36,7 +39,9 @@ surface backed by real data — shippable to a test family/classroom.
 
 - **F1 · real media + more interactions**
   - Add image/audio support to `Item` (the schema already has `image_url`/`prompt_audio_url`);
-    load via Supabase Storage with the emoji glyph as fallback.
+    load via Supabase Storage with the emoji glyph as fallback. *(M1 extends/relaxes the
+    current AGENTS.md baseline of "emoji glyphs + on-device TTS only" — emoji + TTS remain
+    the mandatory fallback when media URLs are absent.)*
   - Add **drag-and-drop** and **sequence** activity types alongside `match` (new `features/*`,
     new `activities.type` values; `MatchRoundBuilder` is the template).
 - **F2 · audio polish**
