@@ -5,8 +5,8 @@
 // OpenAI-compatible Structured Outputs, validates it server-side, runs a
 // second-pass translation-correctness check, and writes it into the fixed
 // AI-generated draft course (published = false) via the admin (service_role)
-// client so it stays invisible to learners until a human flips that course
-// to published.
+// client so it stays invisible to learners until a human approves a generated
+// unit (moving it into the published seed course).
 //
 // LLM calls go through OpenRouter (https://openrouter.ai), not OpenAI
 // directly, to lower cost -- routed to openai/gpt-4o-mini specifically
@@ -81,6 +81,7 @@ const PUBLISHED_COURSE_ID = "11111111-1111-1111-1111-111111111111";
 
 const MIN_ITEMS = 6;
 const MAX_ITEMS = 10;
+const GLYPH_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 interface GeneratedItem {
   prompt_text: string;
@@ -211,6 +212,9 @@ function validateLesson(lesson: GeneratedLesson): string[] {
   if (lesson.items.length < MIN_ITEMS) {
     errors.push(`only ${lesson.items.length} items, need >= ${MIN_ITEMS}`);
   }
+  if (lesson.items.length > MAX_ITEMS) {
+    errors.push(`got ${lesson.items.length} items, need <= ${MAX_ITEMS}`);
+  }
   const seenAnswers = new Set<string>();
   for (const [i, item] of lesson.items.entries()) {
     if (!item.prompt_text?.trim()) errors.push(`item ${i}: prompt_text is empty`);
@@ -218,8 +222,11 @@ function validateLesson(lesson: GeneratedLesson): string[] {
     if (item.prompt_text !== item.answer) {
       errors.push(`item ${i}: answer must equal prompt_text (schema requirement)`);
     }
-    if (!item.glyph || [...item.glyph].length > 4) {
-      // rough sanity check -- a single emoji is at most a few code points
+    const glyph = item.glyph?.trim();
+    const graphemeCount = glyph
+      ? Array.from(GLYPH_SEGMENTER.segment(glyph)).length
+      : 0;
+    if (graphemeCount !== 1) {
       errors.push(`item ${i}: glyph is missing or not a single emoji`);
     }
     if (!Number.isInteger(item.difficulty) || item.difficulty < 1 || item.difficulty > 5) {
@@ -327,7 +334,16 @@ export default {
       );
     }
 
-    const verification = await verifyTranslations(lesson);
+    let verification: { ok: true } | { ok: false; issues: string[] };
+    try {
+      verification = await verifyTranslations(lesson);
+    } catch (e) {
+      const err = e as Error;
+      return Response.json(
+        { error: `translation verification failed: ${err.message}` },
+        { status: 502 },
+      );
+    }
     if (!verification.ok) {
       return Response.json(
         {
@@ -402,12 +418,18 @@ export default {
       lesson_id: lessonRow.id,
       unit_id: unit.id,
       activity_id: activity.id,
+      lesson_title: lesson.lesson_title,
+      items: lesson.items.map((item) => ({
+        prompt_text: item.prompt_text,
+        glyph: item.glyph,
+        difficulty: item.difficulty,
+      })),
       item_count: lesson.items.length,
       course_id: DRAFT_COURSE_ID,
       published: false,
       message:
         "Generated and validated. Review in the AI-Generated Lessons (Draft) " +
-        "course, then flip its `published` flag to make it visible to learners.",
+        "course, then approve to move the unit into the published course.",
     });
   }),
 };

@@ -66,34 +66,36 @@ class SupabaseLessonGeneratorService implements LessonGeneratorService {
     } catch (e) {
       throw LessonGenerationException('Could not reach the generator: $e');
     }
-    final data = res.data as Map<String, dynamic>;
+    final data = _asMap(res.data);
     if (res.status >= 400) {
       throw LessonGenerationException(
-        data['error'] as String? ?? 'Generation failed',
-        (data['details'] as List?)?.cast<String>(),
+        data?['error'] as String? ?? 'Generation failed',
+        _asStringList(data?['details']),
       );
     }
-    // The function's success response doesn't echo item content back, only
-    // ids/counts (see index.ts) — fetch the just-written items for preview.
-    final items = await _client
-        .from('items')
-        .select('prompt_text, glyph, difficulty, activity_id')
-        .eq('activity_id', data['activity_id']);
+    if (data == null) {
+      throw const LessonGenerationException('Generation failed: invalid response');
+    }
+    final unitId = data['unit_id'] as String?;
+    if (unitId == null || unitId.isEmpty) {
+      throw const LessonGenerationException('Generation failed: missing unit id');
+    }
+    final lessonTitle = data['lesson_title'] as String? ?? topic;
+    final itemsRaw = data['items'] as List?;
+    if (itemsRaw == null) {
+      throw const LessonGenerationException(
+        'Generation failed: missing lesson preview items',
+      );
+    }
     return GeneratedLesson(
-      unitId: data['unit_id'] as String,
-      lessonTitle: data['lesson_id'] != null
-          ? (await _client
-                  .from('lessons')
-                  .select('title')
-                  .eq('id', data['lesson_id'])
-                  .single())['title'] as String
-          : topic,
+      unitId: unitId,
+      lessonTitle: lessonTitle,
       items: [
-        for (final row in items)
+        for (final row in itemsRaw.whereType<Map>())
           GeneratedItemPreview(
-            promptText: row['prompt_text'] as String,
+            promptText: row['prompt_text'] as String? ?? '',
             glyph: row['glyph'] as String? ?? '•',
-            difficulty: (row['difficulty'] as num).toInt(),
+            difficulty: ((row['difficulty'] as num?) ?? 1).toInt(),
           ),
       ],
     );
@@ -116,10 +118,26 @@ class SupabaseLessonGeneratorService implements LessonGeneratorService {
       throw LessonGenerationException('Could not reach the generator: $e');
     }
     if (res.status >= 400) {
-      final data = res.data as Map<String, dynamic>;
+      final data = _asMap(res.data);
       throw LessonGenerationException(
-          data['error'] as String? ?? '$action failed');
+        data?['error'] as String? ?? '$action failed',
+        _asStringList(data?['details']),
+      );
     }
+  }
+
+  Map<String, dynamic>? _asMap(Object? value) {
+    if (value is Map) {
+      return value.map((key, val) => MapEntry(key.toString(), val));
+    }
+    return null;
+  }
+
+  List<String>? _asStringList(Object? value) {
+    if (value is List) {
+      return value.whereType<String>().toList();
+    }
+    return null;
   }
 }
 
