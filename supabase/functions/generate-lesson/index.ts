@@ -2,17 +2,72 @@
 // docs/implementation-tasks.md T2-T4).
 //
 // Given a topic, generates a Course->Unit->Lesson->Activity->Item lesson using
-// OpenAI Structured Outputs, validates it server-side, runs a second-pass
-// translation-correctness check, and writes it into the fixed AI-generated
-// draft course (published = false) via the admin (service_role) client so it
-// stays invisible to learners until a human flips that course to published.
+// OpenAI-compatible Structured Outputs, validates it server-side, runs a
+// second-pass translation-correctness check, and writes it into the fixed
+// AI-generated draft course (published = false) via the admin (service_role)
+// client so it stays invisible to learners until a human flips that course
+// to published.
+//
+// LLM calls go through OpenRouter (https://openrouter.ai), not OpenAI
+// directly, to lower cost -- routed to openai/gpt-4o-mini specifically
+// because OpenRouter forwards that model straight to OpenAI, so the strict
+// json_schema structured-output guarantee T3/T4 rely on is unaffected; a
+// non-OpenAI OpenRouter model would need looser response_format handling.
 //
 // Secrets required (function secrets only -- never in dart_defines.json or
-// client code): OPENAI_API_KEY. The Supabase service-role client is provided
-// by the runtime as ctx.supabaseAdmin -- no separate key to manage.
+// client code): OPENROUTER_API_KEY. The Supabase service-role client is
+// provided by the runtime as ctx.supabaseAdmin -- no separate key to manage.
 
 import "@supabase/functions-js/edge-runtime.d.ts";
 import { withSupabase } from "@supabase/server";
+
+const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
+const LLM_MODEL = "openai/gpt-4o-mini";
+
+/** Shared OpenRouter call -- both callOpenAI and verifyTranslations hit the
+ * same OpenAI-compatible endpoint with a structured-output schema. */
+async function callLLM(
+  messages: { role: string; content: string }[],
+  schemaName: string,
+  // deno-lint-ignore no-explicit-any
+  schema: any,
+): Promise<string> {
+  const apiKey = Deno.env.get("OPENROUTER_API_KEY");
+  if (!apiKey) {
+    throw new GenerationError("OPENROUTER_API_KEY not configured", 500);
+  }
+  const res = await fetch(OPENROUTER_API_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      // Optional but recommended by OpenRouter for attribution/rate-limit purposes.
+      "HTTP-Referer": "https://github.com/samuelcychan/Nihongo",
+      "X-Title": "Nihongo M0.5 AI Lesson Generator",
+    },
+    body: JSON.stringify({
+      model: LLM_MODEL,
+      messages,
+      response_format: {
+        type: "json_schema",
+        json_schema: { name: schemaName, strict: true, schema },
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    // Explicit, non-silent failure -- surfaced to the client as an error,
+    // never dropped (see docs/implementation-plan.md's failure-modes table).
+    const body = await res.text();
+    throw new GenerationError(`OpenRouter request failed: ${res.status} ${body}`);
+  }
+  const data = await res.json();
+  const content = data.choices?.[0]?.message?.content;
+  if (!content) {
+    throw new GenerationError("OpenRouter returned no content");
+  }
+  return content as string;
+}
 
 // Course created by migration 0004_ai_generated_course.sql. New lessons are
 // always written here first -- it never receives writes that skip review.
@@ -76,56 +131,38 @@ class GenerationError extends Error {
 }
 
 async function callOpenAI(topic: string): Promise<GeneratedLesson> {
-  const apiKey = Deno.env.get("OPENAI_API_KEY");
-  if (!apiKey) {
-    throw new GenerationError("OPENAI_API_KEY not configured", 500);
-  }
-
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-2024-08-06",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You write vocabulary lessons for a kids' Japanese-learning app " +
-            "(ages 6-10). For the given topic, produce between " +
-            `${MIN_ITEMS} and ${MAX_ITEMS} Japanese words a beginner child ` +
-            "would learn. Each item needs: the Japanese word (hiragana " +
-            "preferred over kanji for early readers), a single representative " +
-            "emoji, a difficulty 1-5 (1=very common/simple, 5=harder), and a " +
-            "broad category so a UI can pick plausible wrong-answer options " +
-            "from the same category. Keep language age-appropriate and " +
-            "unambiguous -- this is the only content a young child sees.",
-        },
-        { role: "user", content: `Topic: ${topic}` },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: { name: "lesson", strict: true, schema: ITEM_SCHEMA },
+  const content = await callLLM(
+    [
+      {
+        role: "system",
+        content:
+          "You write vocabulary lessons for a kids' Japanese-learning app " +
+          "(ages 6-10). For the given topic, produce between " +
+          `${MIN_ITEMS} and ${MAX_ITEMS} Japanese words a beginner child ` +
+          "would learn. Each item needs: the Japanese word (hiragana " +
+          "preferred over kanji for early readers), a single representative " +
+          "emoji, a difficulty 1-5 (1=very common/simple, 5=harder), and a " +
+          "broad category so a UI can pick plausible wrong-answer options " +
+          "from the same category. Keep language age-appropriate and " +
+          "unambiguous -- this is the only content a young child sees.",
       },
-    }),
-  });
-
-  if (!res.ok) {
-    // Explicit, non-silent failure -- surfaced to the client as an error,
-    // never dropped (see docs/implementation-plan.md's failure-modes table).
-    const body = await res.text();
-    throw new GenerationError(`OpenAI generation request failed: ${res.status} ${body}`);
-  }
-
-  const data = await res.json();
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) {
-    throw new GenerationError("OpenAI returned no content");
-  }
+      { role: "user", content: `Topic: ${topic}` },
+    ],
+    "lesson",
+    ITEM_SCHEMA,
+  );
   return JSON.parse(content) as GeneratedLesson;
 }
+
+const VERIFICATION_SCHEMA = {
+  type: "object",
+  properties: {
+    ok: { type: "boolean" },
+    issues: { type: "array", items: { type: "string" } },
+  },
+  required: ["ok", "issues"],
+  additionalProperties: false,
+} as const;
 
 /**
  * T4 -- translation-correctness mitigation (second-pass verification).
@@ -133,67 +170,36 @@ async function callOpenAI(topic: string): Promise<GeneratedLesson> {
  * Schema validation alone (T3) only proves the JSON is well-formed; it does
  * NOT catch a wrong-but-well-formed translation, the single worst failure
  * mode for this feature (a kid confidently learns the wrong word). This asks
- * a second, independent OpenAI call to fact-check each item and flags any it
+ * a second, independent LLM call to fact-check each item and flags any it
  * isn't confident in rather than silently accepting them.
  */
 async function verifyTranslations(
   lesson: GeneratedLesson,
 ): Promise<{ ok: true } | { ok: false; issues: string[] }> {
-  const apiKey = Deno.env.get("OPENAI_API_KEY")!;
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: "gpt-4o-2024-08-06",
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are a strict Japanese-language fact-checker. Given a list " +
-            "of (Japanese word, category) pairs, verify each word is a " +
-            "correct, common, and unambiguous Japanese word for that " +
-            "category -- appropriate for teaching a young English-speaking " +
-            "child. Return { ok: boolean, issues: string[] } -- ok is false " +
-            "if ANY item is wrong, ambiguous, or inappropriate; issues " +
-            "lists exactly what's wrong with which item (empty if ok).",
-        },
-        {
-          role: "user",
-          content: JSON.stringify(
-            lesson.items.map((i) => ({ word: i.prompt_text, category: i.category })),
-          ),
-        },
-      ],
-      response_format: {
-        type: "json_schema",
-        json_schema: {
-          name: "verification",
-          strict: true,
-          schema: {
-            type: "object",
-            properties: {
-              ok: { type: "boolean" },
-              issues: { type: "array", items: { type: "string" } },
-            },
-            required: ["ok", "issues"],
-            additionalProperties: false,
-          },
-        },
+  const content = await callLLM(
+    [
+      {
+        role: "system",
+        content:
+          "You are a strict Japanese-language fact-checker. Given a list " +
+          "of (Japanese word, category) pairs, verify each word is a " +
+          "correct, common, and unambiguous Japanese word for that " +
+          "category -- appropriate for teaching a young English-speaking " +
+          "child. Return { ok: boolean, issues: string[] } -- ok is false " +
+          "if ANY item is wrong, ambiguous, or inappropriate; issues " +
+          "lists exactly what's wrong with which item (empty if ok).",
       },
-    }),
-  });
-
-  if (!res.ok) {
-    throw new GenerationError(`Translation verification request failed: ${res.status}`);
-  }
-  const data = await res.json();
-  const result = JSON.parse(data.choices[0].message.content) as {
-    ok: boolean;
-    issues: string[];
-  };
+      {
+        role: "user",
+        content: JSON.stringify(
+          lesson.items.map((i) => ({ word: i.prompt_text, category: i.category })),
+        ),
+      },
+    ],
+    "verification",
+    VERIFICATION_SCHEMA,
+  );
+  const result = JSON.parse(content) as { ok: boolean; issues: string[] };
   return result.ok ? { ok: true } : { ok: false, issues: result.issues };
 }
 
