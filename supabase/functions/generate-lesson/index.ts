@@ -286,16 +286,22 @@ async function handleReview(
     }
     return Response.json({ unit_id: unitId, status: "approved", course_id: PUBLISHED_COURSE_ID });
   }
-  const { error } = await admin
+  const { data, error } = await admin
     .from("units")
     .delete()
     .eq("id", unitId)
-    .eq("course_id", DRAFT_COURSE_ID); // never allow deleting outside the draft course
+    .eq("course_id", DRAFT_COURSE_ID) // never allow deleting outside the draft course
+    .select("id");
   if (error) {
     return Response.json({ error: `reject failed: ${error.message}` }, { status: 502 });
   }
+  if (!data || data.length === 0) {
+    return Response.json(
+      { error: "reject failed: unit not found (or not in draft course)" },
+      { status: 404 },
+    );
+  }
   return Response.json({ unit_id: unitId, status: "rejected" });
-}
 
 export default {
   fetch: withSupabase({ auth: ["publishable"] }, async (req, ctx) => {
