@@ -6,9 +6,8 @@ understands the motivation and where to start.
 
 ## Revisit `validateLesson`'s glyph check for multi-codepoint emoji
 
-**What:** `[...glyph].length > 4` in `supabase/functions/generate-lesson/index.ts`
-rejects any glyph with more than ~4 code points, as a rough "is this a single
-emoji" sanity check.
+**What:** `Array.from(GLYPH_SEGMENTER.segment(glyph)).length !== 1` in `supabase/functions/generate-lesson/index.ts`
+rejects any glyph that isn't exactly one grapheme cluster (intended to approximate “a single emoji”).
 
 **Why:** Surfaced during real M0.5 verification — a "family members" generation
 was rejected by this check. Family/multi-person emoji (ZWJ sequences) can
