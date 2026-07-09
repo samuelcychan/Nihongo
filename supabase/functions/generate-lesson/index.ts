@@ -157,6 +157,7 @@ async function callOpenAI(topic: string): Promise<GeneratedLesson> {
   } catch (e) {
     throw new GenerationError(`LLM returned invalid JSON: ${e}`, 502);
   }
+}
 
 const VERIFICATION_SCHEMA = {
   type: "object",
@@ -210,6 +211,7 @@ async function verifyTranslations(
     throw new GenerationError(`verification returned invalid JSON: ${e}`, 502);
   }
   return result.ok ? { ok: true } : { ok: false, issues: result.issues };
+}
 
 /** T3 -- server-side validation beyond OpenAI's own strict-mode guarantee:
  * DB-level constraints, item count, and duplicate-answer detection. */
@@ -309,9 +311,10 @@ async function handleReview(
     );
   }
   return Response.json({ unit_id: unitId, status: "rejected" });
+}
 
 export default {
-  fetch: withSupabase({ auth: ["publishable"] }, async (req, ctx) => {
+  fetch: withSupabase({ auth: ["user", "publishable"] }, async (req, ctx) => {
     let body: { action?: string; topic?: string; unit_id?: string };
     try {
       body = await req.json();
@@ -325,6 +328,25 @@ export default {
         return Response.json({ error: "unit_id (non-empty string) is required" }, {
           status: 400,
         });
+      }
+      // Authorization: only users with the teacher role may approve or reject.
+      // Any other user (including anonymous learners) is forbidden.
+      if (ctx.authMode !== "user" || !ctx.userClaims?.id) {
+        return Response.json(
+          { error: "forbidden: a teacher account is required to approve or reject" },
+          { status: 403 },
+        );
+      }
+      const { data: profile } = await ctx.supabaseAdmin
+        .from("profiles")
+        .select("role")
+        .eq("id", ctx.userClaims.id)
+        .single();
+      if (!profile || profile.role !== "teacher") {
+        return Response.json(
+          { error: "forbidden: teacher role required to approve or reject" },
+          { status: 403 },
+        );
       }
       return handleReview(ctx.supabaseAdmin, action, body.unit_id);
     }
