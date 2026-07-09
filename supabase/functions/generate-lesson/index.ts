@@ -152,8 +152,11 @@ async function callOpenAI(topic: string): Promise<GeneratedLesson> {
     "lesson",
     ITEM_SCHEMA,
   );
-  return JSON.parse(content) as GeneratedLesson;
-}
+  try {
+    return JSON.parse(content) as GeneratedLesson;
+  } catch (e) {
+    throw new GenerationError(`LLM returned invalid JSON: ${e}`, 502);
+  }
 
 const VERIFICATION_SCHEMA = {
   type: "object",
