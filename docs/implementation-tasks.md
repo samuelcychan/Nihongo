@@ -96,7 +96,7 @@ alongside the pre-existing "Around the Farm" unit — while the two still-draft 
 for this to work; the existing course-level `published` policy cascaded automatically.
 
 ## Follow-ups noted, not yet actioned
-- `validateLesson`'s glyph check (`[...glyph].length > 4`) may be too strict for legitimate
+- `validateLesson`'s glyph check (`Intl.Segmenter(..., { granularity: 'grapheme' })` and `graphemeCount !== 1`) may be too strict for legitimate
   multi-codepoint emoji (e.g. family ZWJ sequences) — worth revisiting if "family members"
   or similar multi-person topics matter later.
 - gpt-4o-mini's real-world reliability for this task is ~43% (3/7 attempts) before the
