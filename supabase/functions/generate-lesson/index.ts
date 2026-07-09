@@ -203,9 +203,13 @@ async function verifyTranslations(
     "verification",
     VERIFICATION_SCHEMA,
   );
-  const result = JSON.parse(content) as { ok: boolean; issues: string[] };
+  let result: { ok: boolean; issues: string[] };
+  try {
+    result = JSON.parse(content) as { ok: boolean; issues: string[] };
+  } catch (e) {
+    throw new GenerationError(`verification returned invalid JSON: ${e}`, 502);
+  }
   return result.ok ? { ok: true } : { ok: false, issues: result.issues };
-}
 
 /** T3 -- server-side validation beyond OpenAI's own strict-mode guarantee:
  * DB-level constraints, item count, and duplicate-answer detection. */
