@@ -31,10 +31,37 @@ flutter run -d <device> --dart-define-from-file=dart_defines.json
 - Tests: `flutter test` (SRS unit tests + activity widget tests).
 - Emulator run helper: the `/run` Claude Code command (`.claude/commands/run.md`).
 
-Applying Supabase migrations: there is **no Supabase CLI**; use a throwaway Dart `postgres`
-script. **The direct DB host is IPv6-only and most networks have no IPv6** — connect through
+Applying Supabase **migrations** (`supabase/migrations/`): keep using a throwaway Dart
+`postgres` script against the pooler — this predates the CLI below and is proven.
+**The direct DB host is IPv6-only and most networks have no IPv6** — connect through
 the IPv4 **session pooler**: `aws-1-<region>.pooler.supabase.com:5432`, user `postgres.<ref>`
 (note the `aws-1` prefix). The dev project is `ap-southeast-1`.
+
+**Supabase CLI** (installed as of M0.5, via `npm install -g supabase`) is used only for
+**Edge Functions** (`supabase/functions/`) — deploy, secrets, and local `supabase init`
+scaffolding. It needs an interactive `supabase login` (browser auth) that an agent can't
+do on your behalf; migrations still go through the script above, not `supabase db push`.
+
+## gstack
+This repo uses [gstack](https://github.com/garrytan/gstack) — a suite of engineering-workflow
+skills for AI coding agents. It is **per-developer**, installed into your agent's skills dir,
+not vendored here:
+
+```bash
+git clone --single-branch --depth 1 https://github.com/garrytan/gstack.git ~/.claude/skills/gstack
+cd ~/.claude/skills/gstack && ./setup   # requires `bun`; on Windows re-run after every `git pull`
+```
+
+- **Web browsing: always use the `/browse` skill.** Do **NOT** use the
+  `mcp__claude-in-chrome__*` tools.
+- Available skills: `/office-hours`, `/plan-ceo-review`, `/plan-eng-review`,
+  `/plan-design-review`, `/design-consultation`, `/design-shotgun`, `/design-html`,
+  `/review`, `/ship`, `/land-and-deploy`, `/canary`, `/benchmark`, `/browse`,
+  `/connect-chrome`, `/qa`, `/qa-only`, `/design-review`, `/setup-browser-cookies`,
+  `/setup-deploy`, `/setup-gbrain`, `/retro`, `/investigate`, `/document-release`,
+  `/document-generate`, `/codex`, `/cso`, `/autoplan`, `/plan-devex-review`,
+  `/devex-review`, `/careful`, `/freeze`, `/guard`, `/unfreeze`, `/gstack-upgrade`,
+  `/learn`.
 
 ## Architecture map
 ```

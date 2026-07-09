@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
 import '../../app/theme/app_theme.dart';
@@ -170,6 +171,15 @@ class ParentDashboardPage extends ConsumerWidget {
                     ],
                   ),
                 ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            OutlinedButton.icon(
+              onPressed: () => context.push('/generate'),
+              icon: const Icon(Icons.auto_awesome),
+              label: const Text('Create a lesson (AI, M0.5)'),
+              style: OutlinedButton.styleFrom(
+                minimumSize: const Size.fromHeight(AppTheme.minTapTarget * 0.55),
               ),
             ),
           ],

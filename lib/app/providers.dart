@@ -6,6 +6,7 @@ import '../core/db/app_database.dart';
 import '../core/speech/speech_service.dart';
 import '../core/sync/connectivity_sync.dart';
 import '../data/content_repository.dart';
+import '../data/lesson_generator_service.dart';
 import '../data/results_repository.dart';
 import '../domain/models/content.dart';
 
@@ -61,6 +62,13 @@ final progressProvider = StreamProvider<List<LocalItemState>>((ref) {
   final learnerId = ref.watch(learnerIdProvider);
   return db.watchStates(learnerId);
 });
+
+/// M0.5 AI Lesson Generator client (calls the `generate-lesson` Edge
+/// Function). Real implementation — override with [MockLessonGeneratorService]
+/// in widget tests / while the function isn't deployed yet.
+final lessonGeneratorServiceProvider = Provider<LessonGeneratorService>(
+  (ref) => SupabaseLessonGeneratorService(ref.watch(supabaseClientProvider)),
+);
 
 /// Drains the offline outbox on reconnect. Kept alive by watching it from the
 /// home page; starts listening to connectivity on creation.

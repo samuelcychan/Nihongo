@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import '../../domain/models/content.dart';
 import '../../features/activity_match/activity_match_page.dart';
 import '../../features/learner_home/learner_home_page.dart';
+import '../../features/lesson_generator/lesson_generator_page.dart';
 import '../../features/lesson_map/lesson_map_page.dart';
 import '../../features/parent_dashboard/parent_dashboard_page.dart';
 import '../../features/progress/progress_page.dart';
@@ -44,6 +45,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/parents',
       builder: (context, state) => const ParentDashboardPage(),
+    ),
+    GoRoute(
+      path: '/generate',
+      builder: (context, state) => const LessonGeneratorPage(),
     ),
   ],
 );
