@@ -269,13 +269,20 @@ async function handleReview(
   unitId: string,
 ): Promise<Response> {
   if (action === "approve") {
-    const { error } = await admin
+    const { data, error } = await admin
       .from("units")
       .update({ course_id: PUBLISHED_COURSE_ID })
       .eq("id", unitId)
-      .eq("course_id", DRAFT_COURSE_ID); // only ever move OUT of the draft course
+      .eq("course_id", DRAFT_COURSE_ID) // only ever move OUT of the draft course
+      .select("id");
     if (error) {
       return Response.json({ error: `approve failed: ${error.message}` }, { status: 502 });
+    }
+    if (!data || data.length === 0) {
+      return Response.json(
+        { error: "approve failed: unit not found (or not in draft course)" },
+        { status: 404 },
+      );
     }
     return Response.json({ unit_id: unitId, status: "approved", course_id: PUBLISHED_COURSE_ID });
   }
