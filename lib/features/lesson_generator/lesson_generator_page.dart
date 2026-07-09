@@ -92,9 +92,9 @@ class _LessonGeneratorPageState extends ConsumerState<LessonGeneratorPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F4EF),
+      backgroundColor: AppTheme.cream,
       appBar: AppBar(
-        backgroundColor: const Color(0xFFF6F4EF),
+        backgroundColor: AppTheme.cream,
         title: const Text('Create a lesson'),
       ),
       body: SafeArea(
