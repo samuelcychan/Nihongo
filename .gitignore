@@ -46,4 +46,5 @@ app.*.map.json
 
 # Local Supabase config (do not commit)
 /dart_defines.json
+/supabase/.temp/
 CLAUDE.local.md
