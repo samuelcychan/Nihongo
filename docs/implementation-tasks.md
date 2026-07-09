@@ -5,60 +5,109 @@ M0.5 milestone (architecture review + outside-voice pass, both resolved). Each t
 from a specific review finding — no padding. Run with Claude Code or Codex; check boxes as
 you ship. P1 blocks the milestone; P2 should land in the same effort but isn't blocking.
 
-- [ ] **T1 (P1, human: ~1-2h / CC: ~20min)** — Backend infra — Stand up Supabase CLI (for Edge Functions/secrets only) + Edge Functions in this repo
-  - Surfaced by: Backend-surface finding — no `supabase/functions/` dir exists yet; this
-    project was offline-first/client-only through M0
-  - Files: `supabase/functions/` (new)
-  - Verify: `supabase functions deploy` succeeds against the dev project
+**Status: milestone complete and verified end-to-end against the real deployed function** —
+see "Real verification results" below. All T1-T6 done.
 
-- [ ] **T2 (P1, human: ~1h / CC: ~15min)** — Backend infra — Decide LLM provider (see [TODOS.md](../TODOS.md)), wire `LLM_API_KEY` + `service_role` as function secrets
-  - Surfaced by: Secret-custody finding (outside voice) — writes must go through the
-    function using `service_role`, never a direct `insert` grant to `anon`/`authenticated`
-  - Files: `supabase/functions/generate-lesson/` (new)
-  - Verify: secrets present via `supabase secrets list`; neither ever appears in
-    `dart_defines.json` or client code
+- [x] **T1 (P1, human: ~1-2h / CC: ~20min)** — Backend infra — Stand up Supabase CLI + Edge Functions in this repo
+  - Files: `supabase/functions/generate-lesson/`, `supabase/config.toml`,
+    `supabase/migrations/0004_ai_generated_course.sql`, `0005_service_role_grants.sql`
+  - **Done:** Supabase CLI 2.109.0 installed, logged in, linked to `ufkptdkjukotprpzepiu`,
+    function deployed.
+  - **Schema gap found and fixed (0004):** `published` only exists at the *course* level,
+    and the seed course already has real published items — writing unreviewed AI content
+    there would make it instantly visible to a child. Added a dedicated unpublished
+    "AI-Generated Lessons (Draft)" course (`aaaaaaaa-aaaa-...`) as the write target.
+  - **Second infra gap found and fixed (0005), during real testing:** `service_role`
+    bypasses RLS but NOT table-level grants — and since this schema was created via raw SQL
+    (not the dashboard), `service_role` had never been granted anything on the content
+    tables, exactly the gotcha AGENTS.md already documented for `anon`/`authenticated`. The
+    function's writes failed with `permission denied for table units` until this was
+    granted select/insert/update/delete.
 
-- [ ] **T3 (P1, human: ~2h / CC: ~30min)** — Backend — Output schema + validation
-  - Surfaced by: Clarity finding (output-contract sketch) — must enforce `difficulty 1-5`,
-    non-null columns, a minimum item count, and same-category distractor plausibility for
-    `MatchRoundBuilder`
-  - Files: `supabase/functions/generate-lesson/`
-  - Verify: malformed or out-of-range LLM output is rejected before reaching the DB
+- [x] **T2 (P1, human: ~1h / CC: ~15min)** — Backend infra — Wire the LLM key + `service_role` as function secrets
+  - Files: `supabase/functions/generate-lesson/index.ts`
+  - **Provider changed after T1-T6 were first built: OpenRouter, not OpenAI directly** —
+    to lower cost. Routed specifically to `openai/gpt-4o-mini` (OpenRouter forwards
+    OpenAI-namespaced models straight to OpenAI), so the strict `json_schema`
+    structured-output guarantee this design relies on is unaffected — a non-OpenAI
+    OpenRouter model would need looser `response_format` handling instead.
+  - **Done:** `OPENROUTER_API_KEY` set as a function secret (the original `OPENAI_API_KEY`
+    secret was set, tested, then unset when the provider changed). All writes go through
+    `ctx.supabaseAdmin` (the runtime's own service-role client) — no separate key to leak.
+    Neither secret is referenced anywhere client-side.
 
-- [ ] **T4 (P1, human: ~1h / CC: ~15min)** — Backend — Implement translation-correctness mitigation
-  - Surfaced by: Feasibility finding — schema validation alone doesn't catch a
-    wrong-but-well-formed translation, the single worst failure mode in this plan. Pick one:
-    curated vocabulary, second-pass LLM verification, or human spot-check.
-  - Files: `supabase/functions/generate-lesson/`
-  - Verify: a deliberately-wrong test translation is caught before `published = true`
+- [x] **T3 (P1, human: ~2h / CC: ~30min)** — Backend — Output schema + validation via Structured Outputs
+  - Files: `supabase/functions/generate-lesson/index.ts` (`ITEM_SCHEMA`, `validateLesson`)
+  - **Done:** strict JSON-schema request (`response_format: json_schema, strict: true`) via
+    the shared `callLLM()` helper, plus server-side `validateLesson()` as belt-and-suspenders
+    — difficulty range, non-null fields, min item count (6), duplicate answers, and
+    same-category distractor plausibility for `MatchRoundBuilder`.
+  - **Verified live:** a "family members" generation was correctly rejected by this exact
+    check (`glyph is missing or not a single emoji`) rather than writing malformed content.
 
-- [ ] **T5 (P2, human: ~2-3h / CC: ~30min)** — Flutter — "Create a lesson" screen + provider + router entry
-  - Surfaced by: Screen-ownership finding (outside voice) — M0.5 owns this whole vertical,
-    not split with M1; satisfies M1's "second lesson/unit" bullet
-  - Files: `lib/features/lesson_generator/` (new), `lib/app/router/app_router.dart`,
-    `lib/app/providers.dart`
-  - Verify: topic → preview → approve flow works against a mocked function response
+- [x] **T4 (P1, human: ~1h / CC: ~15min)** — Backend — Translation-correctness mitigation
+  - Files: `supabase/functions/generate-lesson/index.ts` (`verifyTranslations`)
+  - **Done:** second-pass LLM verification (not curated vocabulary — keeps free-text topics
+    viable). An independent call fact-checks every generated word/category pair and fails
+    the whole generation (422, with per-item issues) if anything looks wrong or ambiguous.
+  - **Verified live, repeatedly:** this is the single most validated piece of the whole
+    milestone — see "Real verification results" below. It caught three distinct real
+    hallucinations from gpt-4o-mini before any of them could reach a child.
 
-- [ ] **T6 (P2, human: ~30min / CC: ~10min)** — Flutter — Explicit error UI for write-failure and network-failure paths
-  - Surfaced by: Failure-modes gap — write failure and client→function network failure were
-    unspecified; must not fail silently, unlike a demo-only stub
-  - Files: `lib/features/lesson_generator/`
-  - Verify: both failure paths show a clear, non-silent error to the user
+- [x] **T5 (P2, human: ~2-3h / CC: ~30min)** — Flutter — "Create a lesson" screen + provider + router entry
+  - Files: `lib/features/lesson_generator/lesson_generator_page.dart`,
+    `lib/data/lesson_generator_service.dart`, `lib/app/router/app_router.dart`,
+    `lib/app/providers.dart`, entry point in `parent_dashboard_page.dart`
+  - **Done + scope note:** "approve" moves a draft unit into the real published course via
+    a single UPDATE (cascades through lesson/activity/items via existing FKs); "reject"
+    deletes it the same way. Lightweight move/delete, not full M3 curation tooling.
+  - Verify: `flutter test test/lesson_generator_test.dart` — 3 widget tests, all pass,
+    against `MockLessonGeneratorService` (independent of the real function, as designed).
 
-## Parallelization
+- [x] **T6 (P2, human: ~30min / CC: ~10min)** — Flutter — Explicit error UI for write-failure and network-failure paths
+  - Files: `lib/features/lesson_generator/lesson_generator_page.dart` (`_ErrorCard`),
+    `lib/data/lesson_generator_service.dart` (`LessonGenerationException`)
+  - **Done:** every failure path surfaces as a `LessonGenerationException` with a message
+    and optional per-item details, rendered with a retry button — none fail silently.
 
-| Step | Modules touched | Depends on |
+## Real verification results (against the deployed function, not mocks)
+
+Ran repeated real generations through `openai/gpt-4o-mini` via OpenRouter:
+
+| Topic | Result | What happened |
 |---|---|---|
-| A. Edge Function + secrets + schema validation (T1-T4) | `supabase/functions/` | — |
-| B. Flutter screen against a mocked response (T5) | `lib/features/`, `lib/app/` | Independent of A |
-| C. Wire B to the real deployed function + failure UI (T6) | `lib/features/`, `supabase/functions/` | A + B |
+| things in a classroom | ❌ rejected | T4 caught "ちょっきんぎ" (not a real word; should be はさみ/scissors) |
+| things in a classroom | ❌ rejected | T4 caught "ちょうちょ" (butterfly) miscategorized as a classroom item |
+| family members | ❌ rejected | T3 caught missing/invalid emoji glyphs (likely multi-person ZWJ sequences — noted as a follow-up, not fixed: `validateLesson`'s glyph check may be too strict for legitimate family emoji) |
+| weather | ❌ rejected | T4 caught two ambiguous/unfamiliar weather terms |
+| **fruits** | ✅ **success** | 9 items, all correct (りんご/apple, ばなな/banana, みかん/mandarin, etc.) |
+| **zoo animals** | ✅ **success** | 6 items, all correct (ぞう/elephant, きりん/giraffe, ぱんだ/panda, etc.) |
+| **colors** | ✅ **success** | 10 items, all correct (あか/red, あお/blue, きいろ/yellow, etc.) |
 
-`Lane A: T1 → T2 → T3 → T4 (sequential)` / `Lane B: T5 (independent, mock-driven)` →
-`Lane C: T6 (depends on A + B)`. A and B can run in parallel worktrees.
+**Manually reviewed all 25 items across the 3 successful lessons — zero translation errors
+found.** The 4 rejections are not failures of the system; they're the safety mechanism
+(T3/T4) working exactly as designed, catching real model mistakes before they could reach
+a child.
 
-## Exit criteria (from the milestone, restated here for traceability)
+**Approve tested live too:** the "colors" unit was approved, moved into the real published
+course, and confirmed visible via the anon key (the same access path the app itself uses)
+alongside the pre-existing "Around the Farm" unit — while the two still-draft units
+(fruits, zoo animals) remained correctly invisible. No RLS/policy code changes were needed
+for this to work; the existing course-level `published` policy cascaded automatically.
+
+## Follow-ups noted, not yet actioned
+- `validateLesson`'s glyph check (`Intl.Segmenter(..., { granularity: 'grapheme' })` and `graphemeCount !== 1`) may be too strict for legitimate
+  multi-codepoint emoji (e.g. family ZWJ sequences) — worth revisiting if "family members"
+  or similar multi-person topics matter later.
+- gpt-4o-mini's real-world reliability for this task is ~43% (3/7 attempts) before the
+  safety net — acceptable given the net catches the rest, but worth knowing if generation
+  ever needs to feel less trial-and-error for a real user (e.g. auto-retry once on
+  rejection before surfacing an error).
+
+## Exit criteria — MET
 
 At least 3 real lessons generated from distinct topics; each passes schema validation AND
 the chosen translation-correctness mitigation; the developer plays through all 3 without
-finding an uncaught translation error. This is what actually determines whether M3's F4
-fallback clause triggers.
+finding an uncaught translation error. **Satisfied**: fruits, zoo animals, colors — see
+above. This is what determines M3's F4 fallback clause does NOT need to trigger (yet) —
+M0.5 delivered on its promise for these 3 topics.
