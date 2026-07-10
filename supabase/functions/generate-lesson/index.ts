@@ -84,6 +84,7 @@ const MAX_ITEMS = 10;
 const GLYPH_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 interface GeneratedItem {
+  self_check: string; // scratch field -- see ITEM_SCHEMA; never persisted
   prompt_text: string;
   answer: string;
   glyph: string;
@@ -107,13 +108,26 @@ const ITEM_SCHEMA = {
       items: {
         type: "object",
         properties: {
+          // Declared first so strict-mode's autoregressive generation writes
+          // this before committing to prompt_text -- a self-critique pass
+          // baked into the schema itself, not a separate call. Never
+          // persisted to the DB; stripped before writing (see below).
+          self_check: {
+            type: "string",
+            description:
+              "Before answering: is prompt_text the single most common, " +
+              "everyday Japanese word a native child would actually use for " +
+              "this concept -- NOT a scientific/taxonomic name, rare " +
+              "synonym, or formal/literary term? Briefly justify the word " +
+              "choice here first.",
+          },
           prompt_text: { type: "string", description: "The Japanese word/phrase." },
           answer: { type: "string", description: "Must equal prompt_text." },
           glyph: { type: "string", description: "A single emoji representing the word." },
           difficulty: { type: "integer", minimum: 1, maximum: 5 },
           category: { type: "string", description: "Broad category, e.g. 'animal', 'food'." },
         },
-        required: ["prompt_text", "answer", "glyph", "difficulty", "category"],
+        required: ["self_check", "prompt_text", "answer", "glyph", "difficulty", "category"],
         additionalProperties: false,
       },
     },
@@ -145,7 +159,12 @@ async function callOpenAI(topic: string): Promise<GeneratedLesson> {
           "emoji, a difficulty 1-5 (1=very common/simple, 5=harder), and a " +
           "broad category so a UI can pick plausible wrong-answer options " +
           "from the same category. Keep language age-appropriate and " +
-          "unambiguous -- this is the only content a young child sees.",
+          "unambiguous -- this is the only content a young child sees. " +
+          "Always prefer the single most common, everyday word for a " +
+          "concept; never reach for a scientific/taxonomic name, a rare or " +
+          "obscure synonym, or formal/literary register just because it is " +
+          "technically correct -- use the self_check field on each item to " +
+          "verify this before answering.",
       },
       { role: "user", content: `Topic: ${topic}` },
     ],
@@ -162,12 +181,49 @@ async function callOpenAI(topic: string): Promise<GeneratedLesson> {
 const VERIFICATION_SCHEMA = {
   type: "object",
   properties: {
-    ok: { type: "boolean" },
-    issues: { type: "array", items: { type: "string" } },
+    results: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          index: { type: "integer" },
+          ok: { type: "boolean" },
+          issue: {
+            type: ["string", "null"],
+            description: "Why this item is wrong, ambiguous, or inappropriate. Null if ok.",
+          },
+          replacement_word: {
+            type: ["string", "null"],
+            description:
+              "If ok is false and you are confident of a correct, common, " +
+              "unambiguous Japanese word for this category (hiragana " +
+              "preferred), provide it here. Null if ok is true, or if you " +
+              "aren't confident of any safe replacement -- in that case the " +
+              "item is simply dropped rather than risking another wrong word.",
+          },
+          replacement_glyph: {
+            type: ["string", "null"],
+            description:
+              "A single emoji matching replacement_word. Null unless " +
+              "replacement_word is provided.",
+          },
+        },
+        required: ["index", "ok", "issue", "replacement_word", "replacement_glyph"],
+        additionalProperties: false,
+      },
+    },
   },
-  required: ["ok", "issues"],
+  required: ["results"],
   additionalProperties: false,
 } as const;
+
+interface VerificationVerdict {
+  index: number;
+  ok: boolean;
+  issue: string | null;
+  replacement_word: string | null;
+  replacement_glyph: string | null;
+}
 
 /**
  * T4 -- translation-correctness mitigation (second-pass verification).
@@ -175,42 +231,100 @@ const VERIFICATION_SCHEMA = {
  * Schema validation alone (T3) only proves the JSON is well-formed; it does
  * NOT catch a wrong-but-well-formed translation, the single worst failure
  * mode for this feature (a kid confidently learns the wrong word). This asks
- * a second, independent LLM call to fact-check each item and flags any it
- * isn't confident in rather than silently accepting them.
+ * a second, independent LLM call to fact-check each item.
+ *
+ * Auto-repair, not all-or-nothing: earlier, ANY flagged item failed the
+ * whole batch, discarding an otherwise-good 8-9 item lesson over one bad
+ * word. Now each flagged item is either replaced in place (verifier is
+ * confident of a fix) or dropped (it isn't) -- the independent check is
+ * preserved, but a single bad word no longer costs the whole generation.
+ * validateLesson() still runs afterward as the final gate (e.g. too many
+ * items dropped to meet MIN_ITEMS).
  */
 async function verifyTranslations(
   lesson: GeneratedLesson,
-): Promise<{ ok: true } | { ok: false; issues: string[] }> {
+): Promise<{ lesson: GeneratedLesson; notes: string[] }> {
   const content = await callLLM(
     [
       {
         role: "system",
         content:
-          "You are a strict Japanese-language fact-checker. Given a list " +
-          "of (Japanese word, category) pairs, verify each word is a " +
-          "correct, common, and unambiguous Japanese word for that " +
-          "category -- appropriate for teaching a young English-speaking " +
-          "child. Return { ok: boolean, issues: string[] } -- ok is false " +
-          "if ANY item is wrong, ambiguous, or inappropriate; issues " +
-          "lists exactly what's wrong with which item (empty if ok).",
+          "You are a strict Japanese-language fact-checker. Given a " +
+          "numbered list of (index, word, category) items, verify each " +
+          "word is a correct, common, and unambiguous Japanese word for " +
+          "that category -- appropriate for teaching a young " +
+          "English-speaking child (reject scientific/taxonomic names, " +
+          "rare synonyms, and formal/literary register even if technically " +
+          "correct). For every item, set ok:true if it's fine. If " +
+          "ok:false, explain in issue, and if you're confident of a " +
+          "correct common word for the concept, provide it as " +
+          "replacement_word plus a matching replacement_glyph -- otherwise " +
+          "leave both null.",
       },
       {
         role: "user",
         content: JSON.stringify(
-          lesson.items.map((i) => ({ word: i.prompt_text, category: i.category })),
+          lesson.items.map((item, index) => ({
+            index,
+            word: item.prompt_text,
+            category: item.category,
+          })),
         ),
       },
     ],
     "verification",
     VERIFICATION_SCHEMA,
   );
-  let result: { ok: boolean; issues: string[] };
+  let parsed: { results: VerificationVerdict[] };
   try {
-    result = JSON.parse(content) as { ok: boolean; issues: string[] };
+    parsed = JSON.parse(content) as { results: VerificationVerdict[] };
   } catch (e) {
     throw new GenerationError(`verification returned invalid JSON: ${e}`, 502);
   }
-  return result.ok ? { ok: true } : { ok: false, issues: result.issues };
+
+  const verdictByIndex = new Map(parsed.results.map((r) => [r.index, r]));
+  // Seed with answers being kept as-is, so a replacement that would collide
+  // with an unflagged item (or with another item's replacement) is treated
+  // as unfixable rather than silently introducing a duplicate answer --
+  // validateLesson() would reject that anyway, but dropping it here means
+  // one bad replacement doesn't waste the whole lesson.
+  const usedAnswers = new Set(
+    lesson.items
+      .filter((_, i) => {
+        const v = verdictByIndex.get(i);
+        return !v || v.ok;
+      })
+      .map((item) => item.answer),
+  );
+  const repaired: GeneratedItem[] = [];
+  const notes: string[] = [];
+  for (const [i, item] of lesson.items.entries()) {
+    const verdict = verdictByIndex.get(i);
+    if (!verdict || verdict.ok) {
+      repaired.push(item);
+      continue;
+    }
+    const replacement = verdict.replacement_word?.trim();
+    if (replacement && !usedAnswers.has(replacement)) {
+      usedAnswers.add(replacement);
+      notes.push(
+        `item ${i}: replaced "${item.prompt_text}" with "${replacement}"` +
+          (verdict.issue ? ` (${verdict.issue})` : ""),
+      );
+      repaired.push({
+        ...item,
+        prompt_text: replacement,
+        answer: replacement,
+        glyph: verdict.replacement_glyph?.trim() || item.glyph,
+      });
+    } else {
+      const reason = replacement
+        ? `replacement "${replacement}" duplicates another item`
+        : verdict.issue ?? "flagged";
+      notes.push(`item ${i}: dropped "${item.prompt_text}" (${reason})`);
+    }
+  }
+  return { lesson: { ...lesson, items: repaired }, notes };
 }
 
 /** T3 -- server-side validation beyond OpenAI's own strict-mode guarantee:
@@ -368,17 +482,11 @@ export default {
       });
     }
 
-    const validationErrors = validateLesson(lesson);
-    if (validationErrors.length > 0) {
-      return Response.json(
-        { error: "generated lesson failed validation", details: validationErrors },
-        { status: 422 },
-      );
-    }
-
-    let verification: { ok: true } | { ok: false; issues: string[] };
+    let verificationNotes: string[];
     try {
-      verification = await verifyTranslations(lesson);
+      const verified = await verifyTranslations(lesson);
+      lesson = verified.lesson;
+      verificationNotes = verified.notes;
     } catch (e) {
       const err = e as Error;
       return Response.json(
@@ -386,11 +494,17 @@ export default {
         { status: 502 },
       );
     }
-    if (!verification.ok) {
+
+    // Runs AFTER verification/repair, not before -- validates the lesson
+    // that will actually be written (post-replace/drop), so e.g. too many
+    // items dropped to meet MIN_ITEMS is still caught here.
+    const validationErrors = validateLesson(lesson);
+    if (validationErrors.length > 0) {
       return Response.json(
         {
-          error: "generated lesson failed translation-correctness verification",
-          details: verification.issues,
+          error: "generated lesson failed validation after translation-correctness repair",
+          details: validationErrors,
+          corrections: verificationNotes,
         },
         { status: 422 },
       );
@@ -469,6 +583,7 @@ export default {
       item_count: lesson.items.length,
       course_id: DRAFT_COURSE_ID,
       published: false,
+      corrections: verificationNotes,
       message:
         "Generated and validated. Review in the AI-Generated Lessons (Draft) " +
         "course, then approve to move the unit into the published course.",

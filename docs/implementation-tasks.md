@@ -48,8 +48,11 @@ see "Real verification results" below. All T1-T6 done.
 - [x] **T4 (P1, human: ~1h / CC: ~15min)** — Backend — Translation-correctness mitigation
   - Files: `supabase/functions/generate-lesson/index.ts` (`verifyTranslations`)
   - **Done:** second-pass LLM verification (not curated vocabulary — keeps free-text topics
-    viable). An independent call fact-checks every generated word/category pair and fails
-    the whole generation (422, with per-item issues) if anything looks wrong or ambiguous.
+    viable). An independent call fact-checks every generated word/category pair.
+  - **Updated post-launch (see "Correctness-rate improvement" below):** originally
+    all-or-nothing (any flagged item failed the whole 6-10 item batch); now per-item
+    auto-repair (replace or drop) plus a `self_check` field on generation itself, after the
+    original ~43% first-pass success rate was judged too trial-and-error.
   - **Verified live, repeatedly:** this is the single most validated piece of the whole
     milestone — see "Real verification results" below. It caught three distinct real
     hallucinations from gpt-4o-mini before any of them could reach a child.
@@ -95,14 +98,40 @@ alongside the pre-existing "Around the Farm" unit — while the two still-draft 
 (fruits, zoo animals) remained correctly invisible. No RLS/policy code changes were needed
 for this to work; the existing course-level `published` policy cascaded automatically.
 
+## Correctness-rate improvement (post-launch)
+
+The original ~43% (3/7) first-pass success rate was judged too trial-and-error for a real
+user. Two changes, deployed together, targeted the actual failure pattern observed (words
+that were technically correct but rare/scientific/formal — not outright wrong translations):
+
+1. **`self_check` field added to the generation schema** (`ITEM_SCHEMA`), declared *before*
+   `prompt_text` so strict-mode's autoregressive generation writes a brief self-critique
+   ("is this the single most common everyday word, not scientific/rare/formal?") before
+   committing to the word — a self-critique pass baked into the schema itself, no extra call.
+2. **`verifyTranslations` (T4) changed from hard-fail to per-item auto-repair.** Previously
+   any flagged item failed the whole batch. Now each flagged item is independently replaced
+   (if the verifier is confident of a fix) or dropped (if not) — `validateLesson` still runs
+   afterward as the final gate against the *repaired* lesson (e.g. too many items dropped
+   below `MIN_ITEMS`, or two independent repairs colliding into a duplicate answer — this was
+   hit and fixed within the same round, see below).
+
+**Verified live:** re-ran the 4 topics that failed in the original test pass —
+**zoo animals, weather, things in a classroom, family members** — all 4 now succeed
+(weather/classroom/family: zero corrections needed, self_check alone was enough; zoo animals:
+1 item auto-repaired, 9/9 written). One real bug surfaced and was fixed in the same pass: the
+first auto-repair attempt on "weather" independently replaced two different flagged items with
+the same common word ("あめ"), which `validateLesson`'s duplicate-answer check correctly
+rejected (422, no bad content written) — fixed by tracking already-used answers during repair
+and treating a colliding replacement as unfixable (dropped) rather than duplicated.
+
 ## Follow-ups noted, not yet actioned
 - `validateLesson`'s glyph check (`Intl.Segmenter(..., { granularity: 'grapheme' })` and `graphemeCount !== 1`) may be too strict for legitimate
   multi-codepoint emoji (e.g. family ZWJ sequences) — worth revisiting if "family members"
-  or similar multi-person topics matter later.
-- gpt-4o-mini's real-world reliability for this task is ~43% (3/7 attempts) before the
-  safety net — acceptable given the net catches the rest, but worth knowing if generation
-  ever needs to feel less trial-and-error for a real user (e.g. auto-retry once on
-  rejection before surfacing an error).
+  or similar multi-person topics matter later. (Note: a live "family members" retest above
+  succeeded cleanly, so this may no longer be reachable in practice — not re-verified.)
+- No `temperature` is set on the generation call (defaults to the API's 1.0) — discussed as
+  a cheap additional lever but not implemented in this pass; worth trying if the rate
+  regresses on topics not covered by the 4 re-tested above.
 
 ## Exit criteria — MET
 
