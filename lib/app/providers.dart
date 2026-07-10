@@ -77,6 +77,54 @@ final seedLessonProvider = FutureProvider<Lesson>((ref) {
       .fetchLesson(ContentRepository.seedLessonId);
 });
 
+/// All real lessons in the published course, in course order -- replaces the
+/// lesson map's old hardcoded placeholder node list. Includes both the seed
+/// lesson and any AI-generated lessons a teacher has approved (M0.5).
+final courseLessonsProvider = FutureProvider<List<Lesson>>((ref) {
+  return ref
+      .watch(contentRepositoryProvider)
+      .fetchCourseLessons(ContentRepository.publishedCourseId);
+});
+
+enum LessonStatus { done, current, locked }
+
+class LessonProgress {
+  const LessonProgress({required this.lesson, required this.status});
+  final Lesson lesson;
+  final LessonStatus status;
+}
+
+/// Per-lesson pass/current/locked status, derived from real SRS progress: a
+/// lesson counts as passed once every item in it has been answered correctly
+/// at least once (repetitions >= 1 -- matches finishing one full round, see
+/// activity_match_page.dart). The first not-yet-passed lesson in course order
+/// is "current"; everything after it is "locked".
+final courseProgressProvider = Provider<AsyncValue<List<LessonProgress>>>((ref) {
+  final lessonsAsync = ref.watch(courseLessonsProvider);
+  final states = ref.watch(progressProvider).value ?? const [];
+  final repsByItem = {for (final s in states) s.itemId: s.repetitions};
+
+  bool isPassed(Lesson lesson) =>
+      lesson.allItems.isNotEmpty &&
+      lesson.allItems.every((item) => (repsByItem[item.id] ?? 0) >= 1);
+
+  return lessonsAsync.whenData((lessons) {
+    final result = <LessonProgress>[];
+    var currentAssigned = false;
+    for (final lesson in lessons) {
+      if (isPassed(lesson)) {
+        result.add(LessonProgress(lesson: lesson, status: LessonStatus.done));
+      } else if (!currentAssigned) {
+        result.add(LessonProgress(lesson: lesson, status: LessonStatus.current));
+        currentAssigned = true;
+      } else {
+        result.add(LessonProgress(lesson: lesson, status: LessonStatus.locked));
+      }
+    }
+    return result;
+  });
+});
+
 /// Reactive learner progress for the progress view + home badge.
 final progressProvider = StreamProvider<List<LocalItemState>>((ref) {
   final db = ref.watch(appDatabaseProvider);

@@ -7,25 +7,16 @@ import 'package:go_router/go_router.dart';
 import '../../app/providers.dart';
 import '../../app/theme/app_theme.dart';
 
-/// Sprout "Lesson map": a winding path of lesson nodes (done / current / locked)
-/// for the current unit. The active node deep-links into the seed match game.
-///
-/// Node data is a local list for now — wire it to the content hierarchy
-/// (units -> lessons) and per-lesson mastery when that data is available.
+/// Sprout "Lesson map": a winding path of lesson nodes (done / current /
+/// locked) for the published course. Node positions are laid out
+/// procedurally from the real lesson list (courses -> units -> lessons) and
+/// each node deep-links into its own lesson -- not a single shared one.
 class LessonMapPage extends ConsumerWidget {
   const LessonMapPage({super.key});
 
-  static const _nodes = <_MapNode>[
-    _MapNode('Colors', 0.62, 0.04, _NodeState.done),
-    _MapNode('Food', 0.12, 0.24, _NodeState.done),
-    _MapNode('Animals', 0.46, 0.46, _NodeState.current, emoji: '🐮'),
-    _MapNode('Family', 0.12, 0.70, _NodeState.locked),
-    _MapNode('Numbers', 0.46, 0.90, _NodeState.locked),
-  ];
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final lessonAsync = ref.watch(seedLessonProvider);
+    final progressAsync = ref.watch(courseProgressProvider);
 
     return Scaffold(
       body: Container(
@@ -38,96 +29,16 @@ class LessonMapPage extends ConsumerWidget {
           ),
         ),
         child: SafeArea(
-          child: Column(
-            children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('UNIT 1',
-                              style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 12,
-                                  color: AppTheme.inkFaint)),
-                          Text('Around the Farm',
-                              style:
-                                  Theme.of(context).textTheme.headlineSmall),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 11, vertical: 7),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                            color: const Color(0xFFFFD79B), width: 1.5),
-                      ),
-                      child: const Text('⭐ 26',
-                          style: TextStyle(
-                              fontWeight: FontWeight.w800,
-                              fontSize: 13,
-                              color: AppTheme.tangerine)),
-                    ),
-                  ],
-                ),
+          child: progressAsync.when(
+            loading: () => const Center(child: CircularProgressIndicator()),
+            error: (e, _) => Padding(
+              padding: const EdgeInsets.all(24),
+              child: Center(
+                child: Text('Could not load the lesson map.\n$e',
+                    textAlign: TextAlign.center),
               ),
-              Expanded(
-                child: LayoutBuilder(
-                  builder: (context, c) {
-                    final size = Size(c.maxWidth, c.maxHeight);
-                    return Stack(
-                      children: [
-                        // dashed connecting path
-                        Positioned.fill(
-                          child: CustomPaint(
-                            painter: _DashedPathPainter(
-                              points: [
-                                for (final n in _nodes)
-                                  Offset(n.fx * size.width,
-                                      n.fy * size.height + 40),
-                              ],
-                            ),
-                          ),
-                        ),
-                        // scenery
-                        const Positioned(
-                            left: 24, top: 14, child: _Scenery('🌳')),
-                        const Positioned(
-                            right: 30, top: 120, child: _Scenery('🌾')),
-                        const Positioned(
-                            left: 28, bottom: 40, child: _Scenery('🌻')),
-                        // nodes
-                        for (final n in _nodes)
-                          Positioned(
-                            left: n.fx * size.width - 42,
-                            top: n.fy * size.height,
-                            child: _MapNodeView(
-                              node: n,
-                              // Locked nodes stay inert; both the active node
-                              // and already-passed ones are tappable so a
-                              // learner can freely retake a completed lesson.
-                              onTap: n.state == _NodeState.locked
-                                  ? null
-                                  : () {
-                                      final lesson = lessonAsync.value;
-                                      if (lesson != null) {
-                                        context.push('/play', extra: lesson);
-                                      }
-                                    },
-                            ),
-                          ),
-                      ],
-                    );
-                  },
-                ),
-              ),
-            ],
+            ),
+            data: (progress) => _MapBody(progress: progress),
           ),
         ),
       ),
@@ -135,27 +46,132 @@ class LessonMapPage extends ConsumerWidget {
   }
 }
 
-enum _NodeState { done, current, locked }
+class _MapBody extends StatelessWidget {
+  const _MapBody({required this.progress});
+  final List<LessonProgress> progress;
 
-class _MapNode {
-  const _MapNode(this.label, this.fx, this.fy, this.state, {this.emoji});
-  final String label;
-  final double fx; // 0..1 horizontal
-  final double fy; // 0..1 vertical
-  final _NodeState state;
-  final String? emoji;
+  @override
+  Widget build(BuildContext context) {
+    final done = progress.where((p) => p.status == LessonStatus.done).length;
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('COURSE PROGRESS',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 12,
+                            color: AppTheme.inkFaint)),
+                    Text('$done / ${progress.length} lessons complete',
+                        style: Theme.of(context).textTheme.headlineSmall),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(999),
+                  border: Border.all(color: const Color(0xFFFFD79B), width: 1.5),
+                ),
+                child: const Text('⭐ 26',
+                    style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13,
+                        color: AppTheme.tangerine)),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: progress.isEmpty
+              ? const Center(child: Text('No lessons yet.'))
+              : LayoutBuilder(
+                  builder: (context, c) {
+                    // Fixed per-node spacing + a scrollable canvas, rather
+                    // than cramming a variable node count into the fixed
+                    // viewport -- the course grows over time (every AI
+                    // lesson a teacher approves adds a unit), so the map
+                    // must scroll instead of overflowing or squeezing.
+                    const nodeSpacing = 220.0;
+                    const topPad = 40.0;
+                    final n = progress.length;
+                    final width = c.maxWidth;
+                    final contentHeight =
+                        math.max(c.maxHeight, topPad + nodeSpacing * n + 80);
+
+                    Offset pointFor(int i) => Offset(
+                        (i.isEven ? 0.62 : 0.16) * width, topPad + i * nodeSpacing);
+
+                    return SingleChildScrollView(
+                      child: SizedBox(
+                        width: width,
+                        height: contentHeight,
+                        child: Stack(
+                          children: [
+                            Positioned.fill(
+                              child: CustomPaint(
+                                painter: _DashedPathPainter(
+                                  points: [
+                                    for (var i = 0; i < n; i++)
+                                      pointFor(i) + const Offset(0, 40),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            const Positioned(left: 24, top: 14, child: _Scenery('🌳')),
+                            const Positioned(right: 30, top: 120, child: _Scenery('🌾')),
+                            Positioned(
+                                left: 28,
+                                top: contentHeight - 60,
+                                child: const _Scenery('🌻')),
+                            for (var i = 0; i < n; i++)
+                              Positioned(
+                                left: pointFor(i).dx - 42,
+                                top: pointFor(i).dy,
+                                child: _MapNodeView(
+                                  progress: progress[i],
+                                  // Locked nodes stay inert; both the active
+                                  // node and already-passed ones are tappable
+                                  // so a learner can freely retake a
+                                  // completed lesson.
+                                  onTap: progress[i].status == LessonStatus.locked
+                                      ? null
+                                      : () => context.push('/play',
+                                          extra: progress[i].lesson),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
+    );
+  }
 }
 
 class _MapNodeView extends StatelessWidget {
-  const _MapNodeView({required this.node, this.onTap});
-  final _MapNode node;
+  const _MapNodeView({required this.progress, this.onTap});
+  final LessonProgress progress;
   final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
-    final current = node.state == _NodeState.current;
-    final done = node.state == _NodeState.done;
+    final current = progress.status == LessonStatus.current;
+    final done = progress.status == LessonStatus.done;
     final double d = current ? 84 : 62;
+    final label = progress.lesson.title;
+    final emoji =
+        progress.lesson.allItems.isNotEmpty ? progress.lesson.allItems.first.glyph : null;
 
     final Color bg = current
         ? AppTheme.sun
@@ -180,7 +196,7 @@ class _MapNodeView extends StatelessWidget {
               color: bg,
               shape: BoxShape.circle,
               border: Border.all(
-                  color: node.state == _NodeState.locked
+                  color: progress.status == LessonStatus.locked
                       ? AppTheme.hairline
                       : Colors.white,
                   width: current ? 6 : 5),
@@ -189,7 +205,7 @@ class _MapNodeView extends StatelessWidget {
             alignment: Alignment.center,
             child: Text(
               current
-                  ? (node.emoji ?? '▶')
+                  ? (emoji ?? '▶')
                   : done
                       ? '✓'
                       : '🔒',
@@ -210,14 +226,16 @@ class _MapNodeView extends StatelessWidget {
                   BoxShadow(color: Color(0x14000000), blurRadius: 8)
                 ],
               ),
-              child: Text('▶ ${node.label}',
+              child: Text('▶ $label',
                   style: const TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 11,
                       color: AppTheme.tangerine)),
             )
           else
-            Text(node.label,
+            Text(label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 11,

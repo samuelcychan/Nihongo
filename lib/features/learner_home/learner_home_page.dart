@@ -16,13 +16,13 @@ class LearnerHomePage extends ConsumerWidget {
     // Keep the offline-outbox reconnect listener alive for the app's lifetime.
     ref.watch(connectivitySyncProvider);
 
-    final lessonAsync = ref.watch(seedLessonProvider);
+    final courseAsync = ref.watch(courseProgressProvider);
     final progress = ref.watch(progressProvider).value ?? const [];
     final learned = progress.where((s) => s.correctCount > 0).length;
 
     return Scaffold(
       body: SafeArea(
-        child: lessonAsync.when(
+        child: courseAsync.when(
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Padding(
             padding: const EdgeInsets.all(24),
@@ -31,7 +31,17 @@ class LearnerHomePage extends ConsumerWidget {
                   textAlign: TextAlign.center),
             ),
           ),
-          data: (lesson) {
+          data: (lessons) {
+            if (lessons.isEmpty) {
+              return const Center(child: Text('No lessons yet.'));
+            }
+            // The lesson to play next: the first not-yet-passed one (matches
+            // the lesson map's "current" node), or the first lesson if the
+            // whole course is complete.
+            final lesson = lessons
+                .firstWhere((p) => p.status == LessonStatus.current,
+                    orElse: () => lessons.first)
+                .lesson;
             final total = lesson.allItems.length;
             return Padding(
               padding: const EdgeInsets.fromLTRB(20, 14, 20, 20),
