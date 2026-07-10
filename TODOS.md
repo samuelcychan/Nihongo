@@ -4,23 +4,8 @@ Deferred items surfaced during reviews. Each entry has enough context that
 someone picking it up later (including a future Claude Code session)
 understands the motivation and where to start.
 
-## Revisit `validateLesson`'s glyph check for multi-codepoint emoji
-
-**What:** `Array.from(GLYPH_SEGMENTER.segment(glyph)).length !== 1` in `supabase/functions/generate-lesson/index.ts`
-rejects any glyph that isn't exactly one grapheme cluster (intended to approximate “a single emoji”).
-
-**Why:** Surfaced during real M0.5 verification — a "family members" generation
-was rejected by this check. Family/multi-person emoji (ZWJ sequences) can
-legitimately exceed 4 code points, so this may be a false rejection rather
-than the model actually returning bad output. Not confirmed either way yet.
-
-**Pros:** Cheap to investigate — log the actual rejected glyph next time this
-fires, or add a family-members-topic test case.
-
-**Cons:** Low priority; "family members" isn't a core topic and the rejection
-fails safely (no bad content reached anyone).
-
-**Context:** From `docs/implementation-tasks.md`'s "Real verification results"
-table. Relevant only if family/multi-person topics come up again.
-
-**Depends on / blocked by:** Nothing.
+_No open items right now — the glyph-validation TODO was resolved: the
+Edge Function now checks `Intl.Segmenter(..., { granularity: 'grapheme' })`-based
+grapheme-cluster count instead of raw code-point length, so multi-codepoint
+emoji (e.g. family ZWJ sequences) correctly count as a single glyph. See
+`supabase/functions/generate-lesson/index.ts`._

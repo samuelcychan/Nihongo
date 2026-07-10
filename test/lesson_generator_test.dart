@@ -8,7 +8,13 @@ import 'package:kids_lang/features/lesson_generator/lesson_generator_page.dart';
 Future<void> _pump(WidgetTester tester, LessonGeneratorService service) async {
   await tester.pumpWidget(
     ProviderScope(
-      overrides: [lessonGeneratorServiceProvider.overrideWithValue(service)],
+      overrides: [
+        lessonGeneratorServiceProvider.overrideWithValue(service),
+        // Approve/reject are gated on a signed-in teacher (see
+        // lesson_generator_page.dart); these tests exercise the review flow
+        // itself, not the auth gate, so act as if a teacher is signed in.
+        isTeacherProvider.overrideWith((ref) => Future.value(true)),
+      ],
       child: const MaterialApp(home: LessonGeneratorPage()),
     ),
   );

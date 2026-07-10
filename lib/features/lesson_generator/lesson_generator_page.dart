@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
 import '../../app/theme/app_theme.dart';
@@ -91,11 +92,33 @@ class _LessonGeneratorPageState extends ConsumerState<LessonGeneratorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final isTeacher = ref.watch(isTeacherProvider).value ?? false;
     return Scaffold(
       backgroundColor: AppTheme.cream,
       appBar: AppBar(
         backgroundColor: AppTheme.cream,
         title: const Text('Create a lesson'),
+        actions: [
+          TextButton.icon(
+            key: const Key('teacher_status_button'),
+            onPressed: () async {
+              if (isTeacher) {
+                await ref.read(supabaseClientProvider).auth.signOut();
+                await ref
+                    .read(supabaseClientProvider)
+                    .auth
+                    .signInAnonymously();
+              } else {
+                await context.push('/teacher-login');
+              }
+            },
+            icon: Icon(
+              isTeacher ? Icons.school : Icons.school_outlined,
+              size: 18,
+            ),
+            label: Text(isTeacher ? 'Teacher · sign out' : 'Teacher sign-in'),
+          ),
+        ],
       ),
       body: SafeArea(
         top: false,
@@ -110,8 +133,10 @@ class _LessonGeneratorPageState extends ConsumerState<LessonGeneratorPage> {
             _Status.preview || _Status.reviewing => _PreviewCard(
                 lesson: _lesson!,
                 reviewing: _status == _Status.reviewing,
+                isTeacher: isTeacher,
                 onApprove: () => _review(true),
                 onReject: () => _review(false),
+                onSignIn: () => context.push('/teacher-login'),
               ),
             _Status.error => _ErrorCard(
                 message: _errorMessage!,
@@ -187,14 +212,18 @@ class _PreviewCard extends StatelessWidget {
   const _PreviewCard({
     required this.lesson,
     required this.reviewing,
+    required this.isTeacher,
     required this.onApprove,
     required this.onReject,
+    required this.onSignIn,
   });
 
   final GeneratedLesson lesson;
   final bool reviewing;
+  final bool isTeacher;
   final VoidCallback onApprove;
   final VoidCallback onReject;
+  final VoidCallback onSignIn;
 
   @override
   Widget build(BuildContext context) {
@@ -233,43 +262,67 @@ class _PreviewCard extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 14),
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                key: const Key('reject_button'),
-                onPressed: reviewing ? null : onReject,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppTheme.incorrect,
-                  side: const BorderSide(color: AppTheme.incorrect),
-                  minimumSize:
-                      const Size.fromHeight(AppTheme.minTapTarget * 0.6),
+        if (!isTeacher) ...[
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: AppTheme.cardDecoration(),
+            child: Row(
+              children: [
+                const Icon(Icons.info_outline,
+                    color: AppTheme.inkSoft, size: 18),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Sign in as a teacher to approve or reject this lesson.',
+                    style: TextStyle(color: AppTheme.inkSoft, fontSize: 12),
+                  ),
                 ),
-                child: const Text('Reject'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: FilledButton(
-                key: const Key('approve_button'),
-                onPressed: reviewing ? null : onApprove,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.correct,
-                  minimumSize:
-                      const Size.fromHeight(AppTheme.minTapTarget * 0.6),
+                TextButton(
+                  key: const Key('preview_signin_button'),
+                  onPressed: onSignIn,
+                  child: const Text('Sign in'),
                 ),
-                child: reviewing
-                    ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(
-                            strokeWidth: 2, color: Colors.white),
-                      )
-                    : const Text('Approve'),
-              ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ] else
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  key: const Key('reject_button'),
+                  onPressed: reviewing ? null : onReject,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.incorrect,
+                    side: const BorderSide(color: AppTheme.incorrect),
+                    minimumSize:
+                        const Size.fromHeight(AppTheme.minTapTarget * 0.6),
+                  ),
+                  child: const Text('Reject'),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton(
+                  key: const Key('approve_button'),
+                  onPressed: reviewing ? null : onApprove,
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppTheme.correct,
+                    minimumSize:
+                        const Size.fromHeight(AppTheme.minTapTarget * 0.6),
+                  ),
+                  child: reviewing
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Approve'),
+                ),
+              ),
+            ],
+          ),
       ],
     );
   }

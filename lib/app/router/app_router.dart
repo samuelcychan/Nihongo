@@ -8,6 +8,7 @@ import '../../features/lesson_map/lesson_map_page.dart';
 import '../../features/parent_dashboard/parent_dashboard_page.dart';
 import '../../features/progress/progress_page.dart';
 import '../../features/round_complete/round_complete_page.dart';
+import '../../features/teacher_auth/teacher_login_page.dart';
 
 /// App routes. The learner flow plus the new Sprout screens (lesson map,
 /// round-complete celebration, parent dashboard). Role-gating for the parent
@@ -49,6 +50,10 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/generate',
       builder: (context, state) => const LessonGeneratorPage(),
+    ),
+    GoRoute(
+      path: '/teacher-login',
+      builder: (context, state) => const TeacherLoginPage(),
     ),
   ],
 );

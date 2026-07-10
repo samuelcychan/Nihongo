@@ -49,6 +49,27 @@ final learnerIdProvider = Provider<String>((ref) {
   return ref.watch(supabaseClientProvider).auth.currentUser?.id ?? 'anonymous';
 });
 
+/// Reactive Supabase auth state — lets widgets rebuild on sign-in/out, e.g.
+/// the M0.5 teacher sign-in swapping out the default anonymous session.
+final authStateProvider = StreamProvider<AuthState>((ref) {
+  return ref.watch(supabaseClientProvider).auth.onAuthStateChange;
+});
+
+/// True once the signed-in user is confirmed as a teacher via `profiles.role`.
+/// Anonymous sessions have no profile row and resolve to false.
+final isTeacherProvider = FutureProvider<bool>((ref) async {
+  ref.watch(authStateProvider);
+  final client = ref.watch(supabaseClientProvider);
+  final user = client.auth.currentUser;
+  if (user == null || user.isAnonymous) return false;
+  final row = await client
+      .from('profiles')
+      .select('role')
+      .eq('id', user.id)
+      .maybeSingle();
+  return row?['role'] == 'teacher';
+});
+
 /// The seed lesson the slice opens.
 final seedLessonProvider = FutureProvider<Lesson>((ref) {
   return ref
