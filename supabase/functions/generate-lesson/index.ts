@@ -282,6 +282,24 @@ async function verifyTranslations(
     throw new GenerationError(`verification returned invalid JSON: ${e}`, 502);
   }
 
+  const expectedCount = lesson.items.length;
+  const seenVerdicts = new Set<number>();
+  for (const r of parsed.results) {
+    if (!Number.isInteger(r.index) || r.index < 0 || r.index >= expectedCount) {
+      throw new GenerationError(`verification returned out-of-range index: ${r.index}`, 502);
+    }
+    if (seenVerdicts.has(r.index)) {
+      throw new GenerationError(`verification returned duplicate index: ${r.index}`, 502);
+    }
+    seenVerdicts.add(r.index);
+  }
+  if (seenVerdicts.size !== expectedCount) {
+    throw new GenerationError(
+      `verification returned ${seenVerdicts.size}/${expectedCount} results`,
+      502,
+    );
+  }
+
   const verdictByIndex = new Map(parsed.results.map((r) => [r.index, r]));
   // Seed with answers being kept as-is, so a replacement that would collide
   // with an unflagged item (or with another item's replacement) is treated
