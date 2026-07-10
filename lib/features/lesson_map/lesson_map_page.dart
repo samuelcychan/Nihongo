@@ -109,14 +109,17 @@ class LessonMapPage extends ConsumerWidget {
                             top: n.fy * size.height,
                             child: _MapNodeView(
                               node: n,
-                              onTap: n.state == _NodeState.current
-                                  ? () {
+                              // Locked nodes stay inert; both the active node
+                              // and already-passed ones are tappable so a
+                              // learner can freely retake a completed lesson.
+                              onTap: n.state == _NodeState.locked
+                                  ? null
+                                  : () {
                                       final lesson = lessonAsync.value;
                                       if (lesson != null) {
                                         context.push('/play', extra: lesson);
                                       }
-                                    }
-                                  : null,
+                                    },
                             ),
                           ),
                       ],
