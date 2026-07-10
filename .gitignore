@@ -48,3 +48,4 @@ app.*.map.json
 /dart_defines.json
 /supabase/.temp/
 CLAUDE.local.md
+.ua
