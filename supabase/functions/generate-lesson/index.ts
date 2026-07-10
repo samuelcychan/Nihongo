@@ -323,7 +323,17 @@ async function verifyTranslations(
       continue;
     }
     const replacement = verdict.replacement_word?.trim();
-    if (replacement && !usedAnswers.has(replacement)) {
+    const replacementGlyph = verdict.replacement_glyph?.trim();
+    const replacementGlyphCount = replacementGlyph
+      ? Array.from(GLYPH_SEGMENTER.segment(replacementGlyph)).length
+      : 0;
+
+    if (
+      replacement &&
+      replacementGlyph &&
+      replacementGlyphCount === 1 &&
+      !usedAnswers.has(replacement)
+    ) {
       usedAnswers.add(replacement);
       notes.push(
         `item ${i}: replaced "${item.prompt_text}" with "${replacement}"` +
@@ -333,11 +343,15 @@ async function verifyTranslations(
         ...item,
         prompt_text: replacement,
         answer: replacement,
-        glyph: verdict.replacement_glyph?.trim() || item.glyph,
+        glyph: replacementGlyph,
       });
     } else {
       const reason = replacement
-        ? `replacement "${replacement}" duplicates another item`
+        ? !replacementGlyph
+          ? "replacement_glyph missing"
+          : replacementGlyphCount !== 1
+            ? "replacement_glyph is not a single emoji"
+            : `replacement "${replacement}" duplicates another item`
         : verdict.issue ?? "flagged";
       notes.push(`item ${i}: dropped "${item.prompt_text}" (${reason})`);
     }
