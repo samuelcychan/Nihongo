@@ -2,9 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
+import '../../app/router/app_router.dart';
 import '../../app/theme/app_theme.dart';
 
 /// Sprout "Lesson map": a winding path of lesson nodes (done / current /
@@ -46,12 +46,12 @@ class LessonMapPage extends ConsumerWidget {
   }
 }
 
-class _MapBody extends StatelessWidget {
+class _MapBody extends ConsumerWidget {
   const _MapBody({required this.progress});
   final List<LessonProgress> progress;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final done = progress.where((p) => p.status == LessonStatus.done).length;
     return Column(
       children: [
@@ -143,8 +143,8 @@ class _MapBody extends StatelessWidget {
                                   // completed lesson.
                                   onTap: progress[i].status == LessonStatus.locked
                                       ? null
-                                      : () => context.push('/play',
-                                          extra: progress[i].lesson),
+                                      : () => playLesson(
+                                          context, ref, progress[i].lesson),
                                 ),
                               ),
                           ],

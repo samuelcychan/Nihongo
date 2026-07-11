@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
 import '../../app/theme/app_theme.dart';
+import '../../app/widgets/item_visual.dart';
 import '../../domain/models/content.dart';
 import '../round_complete/round_complete_page.dart';
 import 'match_round.dart';
@@ -50,7 +51,11 @@ class _ActivityMatchPageState extends ConsumerState<ActivityMatchPage> {
   void _speakTarget() {
     if (_finished) return;
     final word = _round.target.promptText ?? _round.target.answer;
-    ref.read(audioServiceProvider).speakWord(word);
+    ref.read(audioServiceProvider).speakWord(
+          word,
+          language: widget.lesson.targetLanguage,
+          audioUrl: _round.target.promptAudioUrl,
+        );
   }
 
   Future<void> _onSelect(Item option) async {
@@ -420,10 +425,7 @@ class _OptionTile extends StatelessWidget {
               boxShadow: AppTheme.chunky(shade, y: state == _Status.wrong ? 7 : 6),
             ),
             alignment: Alignment.center,
-            child: Text(
-              item.glyph ?? item.answer,
-              style: const TextStyle(fontSize: 58),
-            ),
+            child: ItemVisual(item: item),
           ),
         ),
       ),

@@ -5,7 +5,7 @@ import 'package:kids_lang/app/providers.dart';
 import 'package:kids_lang/core/audio/audio_service.dart';
 import 'package:kids_lang/data/results_repository.dart';
 import 'package:kids_lang/domain/models/content.dart';
-import 'package:kids_lang/features/activity_match/activity_match_page.dart';
+import 'package:kids_lang/features/activity_sequence/sequence_activity_page.dart';
 
 class _FakeAudio implements AudioService {
   @override
@@ -37,6 +37,8 @@ class _FakeResults implements ResultsSink {
   Future<int> syncPending(String learnerId) async => 0;
 }
 
+// Three items so filling one slot doesn't finish the whole sequence -- same
+// no-GoRouter-in-tests rationale as activity_match_test.dart.
 Lesson _lesson() => const Lesson(
       id: 'L',
       title: 'Test Lesson',
@@ -44,11 +46,12 @@ Lesson _lesson() => const Lesson(
         Activity(
           id: 'A',
           lessonId: 'L',
-          type: 'match',
-          title: 'Match',
+          type: 'sequence',
+          title: 'Sequence',
           items: [
-            Item(id: 'i1', activityId: 'A', answer: 'gato', glyph: '🐱'),
-            Item(id: 'i2', activityId: 'A', answer: 'perro', glyph: '🐶'),
+            Item(id: 'i1', activityId: 'A', answer: 'one', glyph: '1️⃣', position: 0),
+            Item(id: 'i2', activityId: 'A', answer: 'two', glyph: '2️⃣', position: 1),
+            Item(id: 'i3', activityId: 'A', answer: 'three', glyph: '3️⃣', position: 2),
           ],
         ),
       ],
@@ -63,44 +66,37 @@ Future<_FakeResults> _pump(WidgetTester tester) async {
         resultsRepositoryProvider.overrideWithValue(results),
         learnerIdProvider.overrideWithValue('test-learner'),
       ],
-      child: MaterialApp(home: ActivityMatchPage(lesson: _lesson())),
+      child: MaterialApp(home: SequenceActivityPage(lesson: _lesson())),
     ),
   );
-  await tester.pump(); // run post-frame speak callback
+  await tester.pump();
   return results;
 }
 
 void main() {
-  testWidgets('tapping the correct picture shows success and records a result',
+  testWidgets('tapping the next item in order fills the slot and records success',
       (tester) async {
     final results = await _pump(tester);
 
-    // First round's target is i1 (lowest input order / difficulty). Tap it.
-    await tester.tap(find.byKey(const ValueKey('option_i1')));
+    await tester.tap(find.byKey(const Key('pool_tile_i1')));
     await tester.pump();
-
-    expect(find.byKey(const Key('feedback_correct')), findsOneWidget);
-
-    // Let the post-correct delay + advance complete.
-    await tester.pump(const Duration(milliseconds: 1300));
 
     expect(results.calls, 1);
     expect(results.lastCorrect, isTrue);
+    // i1 moves from the pool into slot 0.
+    expect(find.byKey(const Key('pool_tile_i1')), findsNothing);
   });
 
-  testWidgets('tapping a wrong picture shows try-again and records nothing',
-      (tester) async {
+  testWidgets('tapping out of order shakes and records nothing', (tester) async {
     final results = await _pump(tester);
 
-    // i2 is a distractor for the first round (target is i1).
-    await tester.tap(find.byKey(const ValueKey('option_i2')));
+    // i2 is position 1; the expected next tap is i1 (position 0).
+    await tester.tap(find.byKey(const Key('pool_tile_i2')));
     await tester.pump();
 
-    expect(find.byKey(const Key('feedback_wrong')), findsOneWidget);
     expect(results.calls, 0);
+    expect(find.byKey(const Key('pool_tile_i2')), findsOneWidget);
 
-    // Reverts to playing so the child can retry.
-    await tester.pump(const Duration(milliseconds: 1000));
-    expect(find.byKey(const Key('feedback_wrong')), findsNothing);
+    await tester.pump(const Duration(milliseconds: 600));
   });
 }

@@ -1,13 +1,17 @@
 import 'package:flutter_tts/flutter_tts.dart';
+import 'package:just_audio/just_audio.dart';
 
 /// Audio OUTPUT for activities (PRD F2): speaks prompt words and feedback.
 ///
-/// The slice uses on-device TTS so no audio assets need shipping; when an item
-/// carries a `prompt_audio_url` (native-speaker clip) a future implementation can
-/// prefer that. Every activity depends on this abstraction, never on the plugin.
+/// Prefers a native-speaker clip (`Item.promptAudioUrl`) when the item has
+/// one, falling back to on-device TTS otherwise -- TTS remains the mandatory
+/// fallback (M1 extends, not replaces, the emoji+TTS baseline). Every
+/// activity depends on this abstraction, never on the plugins directly.
 abstract class AudioService {
   /// Speaks [text] in [language] (BCP-47, e.g. 'es-ES'), awaiting completion.
-  Future<void> speakWord(String text, {String language = 'es-ES'});
+  /// If [audioUrl] is given, plays that native clip instead and only falls
+  /// back to TTS if playback fails.
+  Future<void> speakWord(String text, {String language = 'es-ES', String? audioUrl});
 
   /// Short spoken feedback cue.
   Future<void> speakFeedback(String text, {String language = 'en-US'});
@@ -17,11 +21,14 @@ abstract class AudioService {
 }
 
 class TtsAudioService implements AudioService {
-  TtsAudioService([FlutterTts? tts]) : _tts = tts ?? FlutterTts() {
+  TtsAudioService([FlutterTts? tts, AudioPlayer? player])
+      : _tts = tts ?? FlutterTts(),
+        _player = player ?? AudioPlayer() {
     _tts.awaitSpeakCompletion(true);
   }
 
   final FlutterTts _tts;
+  final AudioPlayer _player;
   String? _lastLanguage;
 
   Future<void> _ensureLanguage(String language) async {
@@ -31,7 +38,18 @@ class TtsAudioService implements AudioService {
   }
 
   @override
-  Future<void> speakWord(String text, {String language = 'es-ES'}) async {
+  Future<void> speakWord(String text, {String language = 'es-ES', String? audioUrl}) async {
+    if (audioUrl != null && audioUrl.isNotEmpty) {
+      try {
+        await _tts.stop();
+        await _player.setUrl(audioUrl);
+        await _player.play();
+        return;
+      } catch (_) {
+        // Native clip failed to load/play -- fall through to TTS below.
+      }
+    }
+    await _player.stop();
     await _tts.stop();
     await _ensureLanguage(language);
     await _tts.setSpeechRate(0.4); // slow + clear for learners
@@ -41,6 +59,7 @@ class TtsAudioService implements AudioService {
 
   @override
   Future<void> speakFeedback(String text, {String language = 'en-US'}) async {
+    await _player.stop();
     await _tts.stop();
     await _ensureLanguage(language);
     await _tts.setSpeechRate(0.5);
@@ -49,8 +68,8 @@ class TtsAudioService implements AudioService {
   }
 
   @override
-  Future<void> stop() => _tts.stop();
+  Future<void> stop() => Future.wait([_tts.stop(), _player.stop()]);
 
   @override
-  Future<void> dispose() => _tts.stop();
+  Future<void> dispose() => Future.wait([_tts.stop(), _player.dispose()]);
 }

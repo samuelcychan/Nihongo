@@ -9,6 +9,7 @@ import '../data/content_repository.dart';
 import '../data/lesson_generator_service.dart';
 import '../data/results_repository.dart';
 import '../domain/models/content.dart';
+import '../features/parent_dashboard/parent_metrics.dart';
 
 /// The active Supabase client (initialized during bootstrap).
 final supabaseClientProvider = Provider<SupabaseClient>(
@@ -138,6 +139,36 @@ final progressProvider = StreamProvider<List<LocalItemState>>((ref) {
 final lessonGeneratorServiceProvider = Provider<LessonGeneratorService>(
   (ref) => SupabaseLessonGeneratorService(ref.watch(supabaseClientProvider)),
 );
+
+/// M1 NFR-parent: real parent-dashboard aggregates, computed from actual SRS
+/// progress + the real course content (see parent_metrics.dart) instead of
+/// the placeholder numbers the dashboard used to show.
+final parentMetricsProvider = Provider<ParentMetrics>((ref) {
+  final states = ref.watch(progressProvider).value ?? const [];
+  final lessons = ref.watch(courseLessonsProvider).value ?? const [];
+  return computeParentMetrics(states: states, courseLessons: lessons);
+});
+
+/// M1's basic screen-time setting: a per-learner daily minutes limit the
+/// parent dashboard can show/adjust (defaults to 30 when unset).
+final dailyLimitMinutesProvider = StreamProvider<int>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  final learnerId = ref.watch(learnerIdProvider);
+  return db.watchDailyLimitMinutes(learnerId);
+});
+
+/// M1 NFR-safety: whether a parent/guardian has confirmed the consent gate
+/// yet. Checked before the first play session (see consent_gate_page.dart).
+final consentGivenProvider = StreamProvider<bool>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  final learnerId = ref.watch(learnerIdProvider);
+  return db.watchConsentGiven(learnerId);
+});
+
+/// Narrow write-only view of [appDatabaseProvider] for the consent gate
+/// (see [ConsentStore]) -- lets widget tests fake the write without a real
+/// database backend.
+final consentStoreProvider = Provider<ConsentStore>((ref) => ref.watch(appDatabaseProvider));
 
 /// Drains the offline outbox on reconnect. Kept alive by watching it from the
 /// home page; starts listening to connectivity on creation.

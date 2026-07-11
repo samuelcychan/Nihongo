@@ -781,17 +781,308 @@ class LocalItemStatesCompanion extends UpdateCompanion<LocalItemState> {
   }
 }
 
+class $LearnerSettingsTable extends LearnerSettings
+    with TableInfo<$LearnerSettingsTable, LearnerSetting> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $LearnerSettingsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _learnerIdMeta = const VerificationMeta(
+    'learnerId',
+  );
+  @override
+  late final GeneratedColumn<String> learnerId = GeneratedColumn<String>(
+    'learner_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dailyLimitMinutesMeta = const VerificationMeta(
+    'dailyLimitMinutes',
+  );
+  @override
+  late final GeneratedColumn<int> dailyLimitMinutes = GeneratedColumn<int>(
+    'daily_limit_minutes',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultValue: const Constant(30),
+  );
+  static const VerificationMeta _consentGivenMeta = const VerificationMeta(
+    'consentGiven',
+  );
+  @override
+  late final GeneratedColumn<bool> consentGiven = GeneratedColumn<bool>(
+    'consent_given',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("consent_given" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    learnerId,
+    dailyLimitMinutes,
+    consentGiven,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'learner_settings';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<LearnerSetting> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('learner_id')) {
+      context.handle(
+        _learnerIdMeta,
+        learnerId.isAcceptableOrUnknown(data['learner_id']!, _learnerIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_learnerIdMeta);
+    }
+    if (data.containsKey('daily_limit_minutes')) {
+      context.handle(
+        _dailyLimitMinutesMeta,
+        dailyLimitMinutes.isAcceptableOrUnknown(
+          data['daily_limit_minutes']!,
+          _dailyLimitMinutesMeta,
+        ),
+      );
+    }
+    if (data.containsKey('consent_given')) {
+      context.handle(
+        _consentGivenMeta,
+        consentGiven.isAcceptableOrUnknown(
+          data['consent_given']!,
+          _consentGivenMeta,
+        ),
+      );
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {learnerId};
+  @override
+  LearnerSetting map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return LearnerSetting(
+      learnerId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}learner_id'],
+      )!,
+      dailyLimitMinutes: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}daily_limit_minutes'],
+      )!,
+      consentGiven: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}consent_given'],
+      )!,
+    );
+  }
+
+  @override
+  $LearnerSettingsTable createAlias(String alias) {
+    return $LearnerSettingsTable(attachedDatabase, alias);
+  }
+}
+
+class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
+  final String learnerId;
+  final int dailyLimitMinutes;
+
+  /// True once a parent/guardian has confirmed the age-gate. Checked before
+  /// the first play session; anonymous auth continues underneath either way.
+  final bool consentGiven;
+  const LearnerSetting({
+    required this.learnerId,
+    required this.dailyLimitMinutes,
+    required this.consentGiven,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['learner_id'] = Variable<String>(learnerId);
+    map['daily_limit_minutes'] = Variable<int>(dailyLimitMinutes);
+    map['consent_given'] = Variable<bool>(consentGiven);
+    return map;
+  }
+
+  LearnerSettingsCompanion toCompanion(bool nullToAbsent) {
+    return LearnerSettingsCompanion(
+      learnerId: Value(learnerId),
+      dailyLimitMinutes: Value(dailyLimitMinutes),
+      consentGiven: Value(consentGiven),
+    );
+  }
+
+  factory LearnerSetting.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return LearnerSetting(
+      learnerId: serializer.fromJson<String>(json['learnerId']),
+      dailyLimitMinutes: serializer.fromJson<int>(json['dailyLimitMinutes']),
+      consentGiven: serializer.fromJson<bool>(json['consentGiven']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'learnerId': serializer.toJson<String>(learnerId),
+      'dailyLimitMinutes': serializer.toJson<int>(dailyLimitMinutes),
+      'consentGiven': serializer.toJson<bool>(consentGiven),
+    };
+  }
+
+  LearnerSetting copyWith({
+    String? learnerId,
+    int? dailyLimitMinutes,
+    bool? consentGiven,
+  }) => LearnerSetting(
+    learnerId: learnerId ?? this.learnerId,
+    dailyLimitMinutes: dailyLimitMinutes ?? this.dailyLimitMinutes,
+    consentGiven: consentGiven ?? this.consentGiven,
+  );
+  LearnerSetting copyWithCompanion(LearnerSettingsCompanion data) {
+    return LearnerSetting(
+      learnerId: data.learnerId.present ? data.learnerId.value : this.learnerId,
+      dailyLimitMinutes: data.dailyLimitMinutes.present
+          ? data.dailyLimitMinutes.value
+          : this.dailyLimitMinutes,
+      consentGiven: data.consentGiven.present
+          ? data.consentGiven.value
+          : this.consentGiven,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LearnerSetting(')
+          ..write('learnerId: $learnerId, ')
+          ..write('dailyLimitMinutes: $dailyLimitMinutes, ')
+          ..write('consentGiven: $consentGiven')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(learnerId, dailyLimitMinutes, consentGiven);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is LearnerSetting &&
+          other.learnerId == this.learnerId &&
+          other.dailyLimitMinutes == this.dailyLimitMinutes &&
+          other.consentGiven == this.consentGiven);
+}
+
+class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
+  final Value<String> learnerId;
+  final Value<int> dailyLimitMinutes;
+  final Value<bool> consentGiven;
+  final Value<int> rowid;
+  const LearnerSettingsCompanion({
+    this.learnerId = const Value.absent(),
+    this.dailyLimitMinutes = const Value.absent(),
+    this.consentGiven = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  LearnerSettingsCompanion.insert({
+    required String learnerId,
+    this.dailyLimitMinutes = const Value.absent(),
+    this.consentGiven = const Value.absent(),
+    this.rowid = const Value.absent(),
+  }) : learnerId = Value(learnerId);
+  static Insertable<LearnerSetting> custom({
+    Expression<String>? learnerId,
+    Expression<int>? dailyLimitMinutes,
+    Expression<bool>? consentGiven,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (learnerId != null) 'learner_id': learnerId,
+      if (dailyLimitMinutes != null) 'daily_limit_minutes': dailyLimitMinutes,
+      if (consentGiven != null) 'consent_given': consentGiven,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  LearnerSettingsCompanion copyWith({
+    Value<String>? learnerId,
+    Value<int>? dailyLimitMinutes,
+    Value<bool>? consentGiven,
+    Value<int>? rowid,
+  }) {
+    return LearnerSettingsCompanion(
+      learnerId: learnerId ?? this.learnerId,
+      dailyLimitMinutes: dailyLimitMinutes ?? this.dailyLimitMinutes,
+      consentGiven: consentGiven ?? this.consentGiven,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (learnerId.present) {
+      map['learner_id'] = Variable<String>(learnerId.value);
+    }
+    if (dailyLimitMinutes.present) {
+      map['daily_limit_minutes'] = Variable<int>(dailyLimitMinutes.value);
+    }
+    if (consentGiven.present) {
+      map['consent_given'] = Variable<bool>(consentGiven.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('LearnerSettingsCompanion(')
+          ..write('learnerId: $learnerId, ')
+          ..write('dailyLimitMinutes: $dailyLimitMinutes, ')
+          ..write('consentGiven: $consentGiven, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $LocalItemStatesTable localItemStates = $LocalItemStatesTable(
     this,
   );
+  late final $LearnerSettingsTable learnerSettings = $LearnerSettingsTable(
+    this,
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [localItemStates];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    localItemStates,
+    learnerSettings,
+  ];
 }
 
 typedef $$LocalItemStatesTableCreateCompanionBuilder =
@@ -1164,10 +1455,184 @@ typedef $$LocalItemStatesTableProcessedTableManager =
       LocalItemState,
       PrefetchHooks Function()
     >;
+typedef $$LearnerSettingsTableCreateCompanionBuilder =
+    LearnerSettingsCompanion Function({
+      required String learnerId,
+      Value<int> dailyLimitMinutes,
+      Value<bool> consentGiven,
+      Value<int> rowid,
+    });
+typedef $$LearnerSettingsTableUpdateCompanionBuilder =
+    LearnerSettingsCompanion Function({
+      Value<String> learnerId,
+      Value<int> dailyLimitMinutes,
+      Value<bool> consentGiven,
+      Value<int> rowid,
+    });
+
+class $$LearnerSettingsTableFilterComposer
+    extends Composer<_$AppDatabase, $LearnerSettingsTable> {
+  $$LearnerSettingsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get learnerId => $composableBuilder(
+    column: $table.learnerId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dailyLimitMinutes => $composableBuilder(
+    column: $table.dailyLimitMinutes,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get consentGiven => $composableBuilder(
+    column: $table.consentGiven,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$LearnerSettingsTableOrderingComposer
+    extends Composer<_$AppDatabase, $LearnerSettingsTable> {
+  $$LearnerSettingsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get learnerId => $composableBuilder(
+    column: $table.learnerId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dailyLimitMinutes => $composableBuilder(
+    column: $table.dailyLimitMinutes,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get consentGiven => $composableBuilder(
+    column: $table.consentGiven,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$LearnerSettingsTableAnnotationComposer
+    extends Composer<_$AppDatabase, $LearnerSettingsTable> {
+  $$LearnerSettingsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get learnerId =>
+      $composableBuilder(column: $table.learnerId, builder: (column) => column);
+
+  GeneratedColumn<int> get dailyLimitMinutes => $composableBuilder(
+    column: $table.dailyLimitMinutes,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get consentGiven => $composableBuilder(
+    column: $table.consentGiven,
+    builder: (column) => column,
+  );
+}
+
+class $$LearnerSettingsTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $LearnerSettingsTable,
+          LearnerSetting,
+          $$LearnerSettingsTableFilterComposer,
+          $$LearnerSettingsTableOrderingComposer,
+          $$LearnerSettingsTableAnnotationComposer,
+          $$LearnerSettingsTableCreateCompanionBuilder,
+          $$LearnerSettingsTableUpdateCompanionBuilder,
+          (
+            LearnerSetting,
+            BaseReferences<
+              _$AppDatabase,
+              $LearnerSettingsTable,
+              LearnerSetting
+            >,
+          ),
+          LearnerSetting,
+          PrefetchHooks Function()
+        > {
+  $$LearnerSettingsTableTableManager(
+    _$AppDatabase db,
+    $LearnerSettingsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$LearnerSettingsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$LearnerSettingsTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$LearnerSettingsTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> learnerId = const Value.absent(),
+                Value<int> dailyLimitMinutes = const Value.absent(),
+                Value<bool> consentGiven = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LearnerSettingsCompanion(
+                learnerId: learnerId,
+                dailyLimitMinutes: dailyLimitMinutes,
+                consentGiven: consentGiven,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String learnerId,
+                Value<int> dailyLimitMinutes = const Value.absent(),
+                Value<bool> consentGiven = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => LearnerSettingsCompanion.insert(
+                learnerId: learnerId,
+                dailyLimitMinutes: dailyLimitMinutes,
+                consentGiven: consentGiven,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$LearnerSettingsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $LearnerSettingsTable,
+      LearnerSetting,
+      $$LearnerSettingsTableFilterComposer,
+      $$LearnerSettingsTableOrderingComposer,
+      $$LearnerSettingsTableAnnotationComposer,
+      $$LearnerSettingsTableCreateCompanionBuilder,
+      $$LearnerSettingsTableUpdateCompanionBuilder,
+      (
+        LearnerSetting,
+        BaseReferences<_$AppDatabase, $LearnerSettingsTable, LearnerSetting>,
+      ),
+      LearnerSetting,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
   $AppDatabaseManager(this._db);
   $$LocalItemStatesTableTableManager get localItemStates =>
       $$LocalItemStatesTableTableManager(_db, _db.localItemStates);
+  $$LearnerSettingsTableTableManager get learnerSettings =>
+      $$LearnerSettingsTableTableManager(_db, _db.learnerSettings);
 }

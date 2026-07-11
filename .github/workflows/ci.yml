@@ -34,3 +34,37 @@ jobs:
 
       - name: Test
         run: flutter test
+
+  # M1 NFR-parity: this repo's dev machine has no Mac/Xcode, so this job is
+  # the actual iOS build + on-simulator smoke-test verification (not a code
+  # review substitute for it). No dart-defines/Supabase secrets are injected
+  # here -- the smoke test exercises the app's documented offline-boot
+  # fallback (main.dart), proving the compiled app launches and renders on a
+  # real iOS Simulator, not just that `flutter build ios` succeeds.
+  ios-build-and-smoke-test:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.4
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Generate drift code
+        run: dart run build_runner build --delete-conflicting-outputs
+
+      - name: Build iOS (no codesign -- no Apple Developer account in CI)
+        run: flutter build ios --no-codesign
+
+      - name: Boot iOS Simulator
+        run: |
+          DEVICE_ID=$(xcrun simctl list devices available | grep -m1 "iPhone" | grep -oE '[0-9A-F-]{36}')
+          echo "DEVICE_ID=$DEVICE_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$DEVICE_ID"
+
+      - name: Run on-simulator smoke test
+        run: flutter test integration_test/app_smoke_test.dart -d "$DEVICE_ID"

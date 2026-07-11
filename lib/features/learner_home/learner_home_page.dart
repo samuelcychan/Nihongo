@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
+import '../../app/router/app_router.dart';
 import '../../app/theme/app_theme.dart';
 
 /// Landing screen (Sprout direction): greeting, streak chip, a course card with
@@ -100,7 +101,7 @@ class LearnerHomePage extends ConsumerWidget {
                   _ChunkyButton(
                     label: 'Play',
                     icon: Icons.play_arrow_rounded,
-                    onTap: () => context.push('/play', extra: lesson),
+                    onTap: () => playLesson(context, ref, lesson),
                   ),
                   const SizedBox(height: 14),
                   Row(

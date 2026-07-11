@@ -4,24 +4,23 @@ import 'package:go_router/go_router.dart';
 
 import '../../app/providers.dart';
 import '../../app/theme/app_theme.dart';
+import '../../app/widgets/item_visual.dart';
+import '../../domain/models/content.dart';
 
-/// Sprout parent dashboard (phone). Mastered/total are read from the live
-/// progress stream; time/accuracy/streak and the weekly chart are placeholders
-/// until those metrics are tracked — wire them to real aggregates when ready.
+/// Sprout parent dashboard (phone). Every number here is a real aggregate
+/// computed from learner_item_states (see parent_metrics.dart) -- no
+/// placeholder data (M1 NFR-parent).
 class ParentDashboardPage extends ConsumerWidget {
   const ParentDashboardPage({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final lessonAsync = ref.watch(seedLessonProvider);
-    final states = ref.watch(progressProvider).value ?? const [];
-    final mastered = states.where((s) => s.repetitions >= 2).length;
-    final total = lessonAsync.value?.allItems.length ?? 0;
+    final metrics = ref.watch(parentMetricsProvider);
+    final dailyLimit = ref.watch(dailyLimitMinutesProvider).value ?? 30;
 
-    // demo weekly minutes (Mon..Sun); replace with real session aggregates
-    const week = [0.30, 0.55, 0.88, 0.48, 0.66, 0.20, 0.10];
+    final week = metrics.weekFractions;
     const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-    const todayIndex = 2;
+    final todayIndex = DateTime.now().weekday - 1; // Mon=0..Sun=6
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F4EF),
@@ -76,21 +75,24 @@ class ParentDashboardPage extends ConsumerWidget {
               crossAxisSpacing: 11,
               childAspectRatio: 2.4,
               children: [
-                const _StatCard(
+                _StatCard(
                     label: 'Time learning',
-                    value: '38',
+                    value: '${metrics.minutesToday}',
                     unit: ' min',
                     color: AppTheme.accent),
                 _StatCard(
                     label: 'Words mastered',
-                    value: '$mastered',
-                    unit: ' / $total',
+                    value: '${metrics.mastered}',
+                    unit: ' / ${metrics.totalItems}',
                     color: AppTheme.grassDeep),
-                const _StatCard(
-                    label: 'Accuracy', value: '86', unit: '%', color: AppTheme.ink),
-                const _StatCard(
+                _StatCard(
+                    label: 'Accuracy',
+                    value: '${metrics.accuracyPercent}',
+                    unit: '%',
+                    color: AppTheme.ink),
+                _StatCard(
                     label: 'Day streak',
-                    value: '🔥 3',
+                    value: metrics.dayStreak > 0 ? '🔥 ${metrics.dayStreak}' : '0',
                     unit: '',
                     color: AppTheme.tangerine),
               ],
@@ -150,25 +152,68 @@ class ParentDashboardPage extends ConsumerWidget {
               ),
             ),
             const SizedBox(height: 14),
-            // review list
+            // review list — real items with the worst recent accuracy.
+            if (metrics.reviewItems.isNotEmpty)
+              Container(
+                padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
+                decoration: AppTheme.cardDecoration(border: const Color(0xFFECE5D9)),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Could use review',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: AppTheme.ink)),
+                    const SizedBox(height: 9),
+                    Row(
+                      children: [
+                        for (final item in metrics.reviewItems) ...[
+                          Expanded(child: _ReviewChip(item: item)),
+                          if (item != metrics.reviewItems.last) const SizedBox(width: 9),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            const SizedBox(height: 14),
+            // basic screen-time setting (M1 NFR-parent)
             Container(
               padding: const EdgeInsets.fromLTRB(14, 13, 14, 14),
               decoration: AppTheme.cardDecoration(border: const Color(0xFFECE5D9)),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: const [
-                  Text('Could use review',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700,
-                          fontSize: 13,
-                          color: AppTheme.ink)),
-                  SizedBox(height: 9),
-                  Row(
-                    children: [
-                      Expanded(child: _ReviewChip(emoji: '🐟', word: 'さかな')),
-                      SizedBox(width: 9),
-                      Expanded(child: _ReviewChip(emoji: '🐮', word: 'うし')),
-                    ],
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('Daily screen-time limit',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: AppTheme.ink)),
+                  ),
+                  IconButton(
+                    key: const Key('limit_decrease'),
+                    icon: const Icon(Icons.remove_circle_outline),
+                    onPressed: dailyLimit <= 5
+                        ? null
+                        : () => ref
+                            .read(appDatabaseProvider)
+                            .setDailyLimitMinutes(
+                                ref.read(learnerIdProvider), dailyLimit - 5),
+                  ),
+                  Text('$dailyLimit min',
+                      key: const Key('limit_value'),
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          fontSize: 14,
+                          color: AppTheme.grassDeep)),
+                  IconButton(
+                    key: const Key('limit_increase'),
+                    icon: const Icon(Icons.add_circle_outline),
+                    onPressed: () => ref
+                        .read(appDatabaseProvider)
+                        .setDailyLimitMinutes(
+                            ref.read(learnerIdProvider), dailyLimit + 5),
                   ),
                 ],
               ),
@@ -246,9 +291,8 @@ class _StatCard extends StatelessWidget {
 }
 
 class _ReviewChip extends StatelessWidget {
-  const _ReviewChip({required this.emoji, required this.word});
-  final String emoji;
-  final String word;
+  const _ReviewChip({required this.item});
+  final Item item;
 
   @override
   Widget build(BuildContext context) {
@@ -260,9 +304,9 @@ class _ReviewChip extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Text(emoji, style: const TextStyle(fontSize: 22)),
+          ItemVisual(item: item, size: 22),
           const SizedBox(width: 8),
-          Text(word,
+          Text(item.promptText ?? item.answer,
               style: const TextStyle(
                   fontWeight: FontWeight.w700,
                   fontSize: 13,

@@ -1,7 +1,12 @@
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../domain/models/content.dart';
+import '../../features/activity_dragdrop/dragdrop_activity_page.dart';
 import '../../features/activity_match/activity_match_page.dart';
+import '../../features/activity_sequence/sequence_activity_page.dart';
+import '../../features/consent_gate/consent_gate_page.dart';
 import '../../features/learner_home/learner_home_page.dart';
 import '../../features/lesson_generator/lesson_generator_page.dart';
 import '../../features/lesson_map/lesson_map_page.dart';
@@ -9,6 +14,19 @@ import '../../features/parent_dashboard/parent_dashboard_page.dart';
 import '../../features/progress/progress_page.dart';
 import '../../features/round_complete/round_complete_page.dart';
 import '../../features/teacher_auth/teacher_login_page.dart';
+import '../providers.dart';
+
+/// Navigates to a lesson, routing through the M1 consent gate first if a
+/// parent/guardian hasn't confirmed it yet -- the single entry point both
+/// the home Play button and the lesson map's nodes go through.
+void playLesson(BuildContext context, WidgetRef ref, Lesson lesson) {
+  final consented = ref.read(consentGivenProvider).value ?? false;
+  if (consented) {
+    context.push('/play', extra: lesson);
+  } else {
+    context.push('/consent', extra: lesson);
+  }
+}
 
 /// App routes. The learner flow plus the new Sprout screens (lesson map,
 /// round-complete celebration, parent dashboard). Role-gating for the parent
@@ -25,8 +43,19 @@ final appRouter = GoRouter(
     ),
     GoRoute(
       path: '/play',
-      builder: (context, state) =>
-          ActivityMatchPage(lesson: state.extra as Lesson),
+      // M1: a lesson's first activity picks the interaction type; `match`
+      // (and any unrecognized/legacy type) stays the default.
+      builder: (context, state) {
+        final lesson = state.extra as Lesson;
+        final type = lesson.activities.isNotEmpty
+            ? lesson.activities.first.type
+            : 'match';
+        return switch (type) {
+          'drag_drop' => DragDropActivityPage(lesson: lesson),
+          'sequence' => SequenceActivityPage(lesson: lesson),
+          _ => ActivityMatchPage(lesson: lesson),
+        };
+      },
     ),
     GoRoute(
       path: '/complete',
@@ -54,6 +83,11 @@ final appRouter = GoRouter(
     GoRoute(
       path: '/teacher-login',
       builder: (context, state) => const TeacherLoginPage(),
+    ),
+    GoRoute(
+      path: '/consent',
+      builder: (context, state) =>
+          ConsentGatePage(pendingLesson: state.extra as Lesson?),
     ),
   ],
 );
