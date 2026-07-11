@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/audio/audio_service.dart';
 import '../core/db/app_database.dart';
 import '../core/speech/speech_service.dart';
+import '../core/supabase/app_supabase.dart';
 import '../core/sync/connectivity_sync.dart';
 import '../data/content_repository.dart';
 import '../data/lesson_generator_service.dart';
@@ -172,7 +173,19 @@ final consentStoreProvider = Provider<ConsentStore>((ref) => ref.watch(appDataba
 
 /// Drains the offline outbox on reconnect. Kept alive by watching it from the
 /// home page; starts listening to connectivity on creation.
+///
+/// Guarded on [Env.isConfigured]: without dart-defines (offline/no-backend UI
+/// work, and CI's iOS smoke test) there's nothing to sync, and touching
+/// [resultsRepositoryProvider]/[supabaseClientProvider] here would throw --
+/// `Supabase.instance.client` asserts if `Supabase.initialize` was never
+/// called, which would crash every unconditional watcher of this provider.
 final connectivitySyncProvider = Provider<ConnectivitySync>((ref) {
+  if (!Env.isConfigured) {
+    return ConnectivitySync(
+      results: _NoopResultsSink(),
+      learnerId: () => 'anonymous',
+    );
+  }
   final sync = ConnectivitySync(
     results: ref.watch(resultsRepositoryProvider),
     learnerId: () => ref.read(learnerIdProvider),
@@ -181,3 +194,17 @@ final connectivitySyncProvider = Provider<ConnectivitySync>((ref) {
   ref.onDispose(sync.dispose);
   return sync;
 });
+
+class _NoopResultsSink implements ResultsSink {
+  @override
+  Future<void> recordResult({
+    required String learnerId,
+    required Item item,
+    required bool correct,
+    required int attempts,
+    Duration? responseTime,
+  }) async {}
+
+  @override
+  Future<int> syncPending(String learnerId) async => 0;
+}
