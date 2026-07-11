@@ -63,15 +63,14 @@ class SupabaseLessonGeneratorService implements LessonGeneratorService {
         'generate-lesson',
         body: {'topic': topic},
       );
+    } on FunctionException catch (e) {
+      throw _fromFunctionException(e, 'Generation failed');
     } catch (e) {
       throw LessonGenerationException('Could not reach the generator: $e');
     }
     final data = _asMap(res.data);
     if (res.status >= 400) {
-      throw LessonGenerationException(
-        data?['error'] as String? ?? 'Generation failed',
-        _asStringList(data?['details']),
-      );
+      throw _fromErrorMap(data, 'Generation failed');
     }
     if (data == null) {
       throw const LessonGenerationException('Generation failed: invalid response');
@@ -114,17 +113,28 @@ class SupabaseLessonGeneratorService implements LessonGeneratorService {
         'generate-lesson',
         body: {'action': action, 'unit_id': unitId},
       );
+    } on FunctionException catch (e) {
+      throw _fromFunctionException(e, '$action failed');
     } catch (e) {
       throw LessonGenerationException('Could not reach the generator: $e');
     }
     if (res.status >= 400) {
-      final data = _asMap(res.data);
-      throw LessonGenerationException(
-        data?['error'] as String? ?? '$action failed',
-        _asStringList(data?['details']),
-      );
+      throw _fromErrorMap(_asMap(res.data), '$action failed');
     }
   }
+
+  LessonGenerationException _fromFunctionException(
+    FunctionException e,
+    String fallbackMessage,
+  ) => _fromErrorMap(_asMap(e.details), fallbackMessage);
+
+  LessonGenerationException _fromErrorMap(
+    Map<String, dynamic>? data,
+    String fallbackMessage,
+  ) => LessonGenerationException(
+    data?['error'] as String? ?? fallbackMessage,
+    _asStringList(data?['details']),
+  );
 
   Map<String, dynamic>? _asMap(Object? value) {
     if (value is Map) {
