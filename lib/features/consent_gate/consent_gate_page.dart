@@ -60,9 +60,18 @@ class _ConsentGatePageState extends ConsumerState<ConsentGatePage> {
       _error = null;
       _submitting = true;
     });
-    await ref
-        .read(consentStoreProvider)
-        .setConsentGiven(ref.read(learnerIdProvider), true);
+    try {
+      await ref
+          .read(consentStoreProvider)
+          .setConsentGiven(ref.read(learnerIdProvider), true);
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _submitting = false;
+        _error = 'Something went wrong saving that. Please try again.';
+      });
+      return;
+    }
     if (!mounted) return;
     if (widget.pendingLesson != null) {
       context.pushReplacement('/play', extra: widget.pendingLesson);
