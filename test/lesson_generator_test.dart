@@ -43,6 +43,21 @@ void main() {
     expect(find.byKey(const Key('approve_button')), findsNothing);
   });
 
+  testWidgets('picking an activity type threads it through to generation',
+      (tester) async {
+    await _pump(tester, MockLessonGeneratorService());
+
+    await tester.enterText(
+        find.byKey(const Key('topic_field')), 'classroom objects');
+    await tester.tap(find.text('Drag & Drop'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('generate_button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+
+    expect(find.textContaining('Drag & Drop'), findsOneWidget);
+  });
+
   testWidgets('reject flow discards the draft without approving',
       (tester) async {
     await _pump(tester, MockLessonGeneratorService());
