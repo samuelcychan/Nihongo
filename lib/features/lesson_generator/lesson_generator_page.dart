@@ -27,6 +27,7 @@ class _LessonGeneratorPageState extends ConsumerState<LessonGeneratorPage> {
   GeneratedLesson? _lesson;
   String? _errorMessage;
   List<String>? _errorDetails;
+  GeneratableActivityType _activityType = GeneratableActivityType.match;
 
   @override
   void dispose() {
@@ -39,8 +40,9 @@ class _LessonGeneratorPageState extends ConsumerState<LessonGeneratorPage> {
     if (topic.isEmpty) return;
     setState(() => _status = _Status.generating);
     try {
-      final lesson =
-          await ref.read(lessonGeneratorServiceProvider).generate(topic);
+      final lesson = await ref
+          .read(lessonGeneratorServiceProvider)
+          .generate(topic, type: _activityType);
       if (!mounted) return;
       setState(() {
         _lesson = lesson;
@@ -128,6 +130,9 @@ class _LessonGeneratorPageState extends ConsumerState<LessonGeneratorPage> {
             _Status.idle || _Status.generating => _TopicForm(
                 controller: _topicController,
                 generating: _status == _Status.generating,
+                activityType: _activityType,
+                onActivityTypeChanged: (type) =>
+                    setState(() => _activityType = type),
                 onGenerate: _generate,
               ),
             _Status.preview || _Status.reviewing => _PreviewCard(
@@ -154,11 +159,15 @@ class _TopicForm extends StatelessWidget {
   const _TopicForm({
     required this.controller,
     required this.generating,
+    required this.activityType,
+    required this.onActivityTypeChanged,
     required this.onGenerate,
   });
 
   final TextEditingController controller;
   final bool generating;
+  final GeneratableActivityType activityType;
+  final ValueChanged<GeneratableActivityType> onActivityTypeChanged;
   final VoidCallback onGenerate;
 
   @override
@@ -188,6 +197,21 @@ class _TopicForm extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
+        const Text('Activity type',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13)),
+        const SizedBox(height: 8),
+        SegmentedButton<GeneratableActivityType>(
+          key: const Key('activity_type_picker'),
+          segments: [
+            for (final type in GeneratableActivityType.values)
+              ButtonSegment(value: type, label: Text(type.label)),
+          ],
+          selected: {activityType},
+          onSelectionChanged: generating
+              ? null
+              : (selection) => onActivityTypeChanged(selection.first),
+        ),
+        const SizedBox(height: 16),
         FilledButton(
           key: const Key('generate_button'),
           onPressed: generating ? null : onGenerate,
@@ -207,6 +231,13 @@ class _TopicForm extends StatelessWidget {
     );
   }
 }
+
+String _activityTypeLabel(String value) => GeneratableActivityType.values
+    .firstWhere(
+      (t) => t.value == value,
+      orElse: () => GeneratableActivityType.match,
+    )
+    .label;
 
 class _PreviewCard extends StatelessWidget {
   const _PreviewCard({
@@ -233,8 +264,11 @@ class _PreviewCard extends StatelessWidget {
         Text(lesson.lessonTitle,
             style: Theme.of(context).textTheme.headlineSmall),
         const SizedBox(height: 4),
-        Text('${lesson.items.length} words · draft, not yet visible to learners',
-            style: const TextStyle(color: AppTheme.inkFaint, fontSize: 12)),
+        Text(
+          '${lesson.items.length} words · ${_activityTypeLabel(lesson.activityType)} · '
+          'draft, not yet visible to learners',
+          style: const TextStyle(color: AppTheme.inkFaint, fontSize: 12),
+        ),
         const SizedBox(height: 14),
         Expanded(
           child: ListView.separated(

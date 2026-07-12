@@ -83,6 +83,20 @@ const MIN_ITEMS = 6;
 const MAX_ITEMS = 10;
 const GLYPH_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
+// The activity types the Flutter client actually renders a page for (see
+// app_router.dart's '/play' dispatch) -- 'trace' and 'speak' are allowed by
+// the DB check constraint for future use but have no client UI yet, so the
+// generator doesn't offer them.
+const SUPPORTED_ACTIVITY_TYPES = ["match", "drag_drop", "sequence"] as const;
+type ActivityType = (typeof SUPPORTED_ACTIVITY_TYPES)[number];
+
+function isSupportedActivityType(value: unknown): value is ActivityType {
+  return (
+    typeof value === "string" &&
+    (SUPPORTED_ACTIVITY_TYPES as readonly string[]).includes(value)
+  );
+}
+
 interface GeneratedItem {
   self_check: string; // scratch field -- see ITEM_SCHEMA; never persisted
   prompt_text: string;
@@ -461,7 +475,7 @@ async function handleReview(
 
 export default {
   fetch: withSupabase({ auth: ["user", "publishable"] }, async (req, ctx) => {
-    let body: { action?: string; topic?: string; unit_id?: string };
+    let body: { action?: string; topic?: string; unit_id?: string; type?: string };
     try {
       body = await req.json();
     } catch {
@@ -501,6 +515,13 @@ export default {
     if (typeof topic !== "string" || !topic.trim()) {
       return Response.json({ error: "topic (non-empty string) is required" }, { status: 400 });
     }
+    if (body.type !== undefined && !isSupportedActivityType(body.type)) {
+      return Response.json(
+        { error: `type must be one of ${SUPPORTED_ACTIVITY_TYPES.join(", ")}` },
+        { status: 400 },
+      );
+    }
+    const activityType: ActivityType = body.type === undefined ? "match" : body.type;
 
     let lesson: GeneratedLesson;
     try {
@@ -573,10 +594,13 @@ export default {
       .from("activities")
       .insert({
         lesson_id: lessonRow.id,
-        type: "match",
+        type: activityType,
         title: lesson.lesson_title,
         position: 0,
-        config: { optionCount: 4, speak: true },
+        // drag_drop and sequence read straight from items, no extra config
+        // (see DragDropActivityPage/SequenceActivityPage) -- optionCount/speak
+        // are match-only (ActivityMatchPage).
+        config: activityType === "match" ? { optionCount: 4, speak: true } : {},
       })
       .select("id")
       .single();
@@ -606,6 +630,7 @@ export default {
       lesson_id: lessonRow.id,
       unit_id: unit.id,
       activity_id: activity.id,
+      activity_type: activityType,
       lesson_title: lesson.lesson_title,
       items: lesson.items.map((item) => ({
         prompt_text: item.prompt_text,

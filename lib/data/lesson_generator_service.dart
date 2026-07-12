@@ -20,11 +20,33 @@ class GeneratedLesson {
     required this.unitId,
     required this.lessonTitle,
     required this.items,
+    this.activityType = 'match',
   });
 
   final String unitId;
   final String lessonTitle;
   final List<GeneratedItemPreview> items;
+
+  /// Matches app_router.dart's '/play' dispatch: 'match', 'drag_drop', or
+  /// 'sequence'.
+  final String activityType;
+}
+
+/// Activity types the generator can produce — matches app_router.dart's
+/// '/play' dispatch (the only types with a client-side page).
+enum GeneratableActivityType {
+  match('match', 'Match'),
+  dragDrop('drag_drop', 'Drag & Drop'),
+  sequence('sequence', 'Sequence');
+
+  const GeneratableActivityType(this.value, this.label);
+
+  /// The DB/wire value sent to the Edge Function and stored in
+  /// `activities.type`.
+  final String value;
+
+  /// Short label for the teacher-facing type picker.
+  final String label;
 }
 
 /// Thrown for any generation/review failure — always carries a message meant
@@ -45,7 +67,10 @@ class LessonGenerationException implements Exception {
 /// the Flutter screen can be built and tested against [MockLessonGeneratorService]
 /// independently of the deployed function (T5's parallel lane).
 abstract class LessonGeneratorService {
-  Future<GeneratedLesson> generate(String topic);
+  Future<GeneratedLesson> generate(
+    String topic, {
+    GeneratableActivityType type = GeneratableActivityType.match,
+  });
   Future<void> approve(String unitId);
   Future<void> reject(String unitId);
 }
@@ -56,12 +81,15 @@ class SupabaseLessonGeneratorService implements LessonGeneratorService {
   final SupabaseClient _client;
 
   @override
-  Future<GeneratedLesson> generate(String topic) async {
+  Future<GeneratedLesson> generate(
+    String topic, {
+    GeneratableActivityType type = GeneratableActivityType.match,
+  }) async {
     final FunctionResponse res;
     try {
       res = await _client.functions.invoke(
         'generate-lesson',
-        body: {'topic': topic},
+        body: {'topic': topic, 'type': type.value},
       );
     } on FunctionException catch (e) {
       throw _fromFunctionException(e, 'Generation failed');
@@ -89,6 +117,7 @@ class SupabaseLessonGeneratorService implements LessonGeneratorService {
     return GeneratedLesson(
       unitId: unitId,
       lessonTitle: lessonTitle,
+      activityType: data['activity_type'] as String? ?? type.value,
       items: [
         for (final row in itemsRaw.whereType<Map>())
           GeneratedItemPreview(
@@ -160,7 +189,10 @@ class MockLessonGeneratorService implements LessonGeneratorService {
   final bool failGeneration;
 
   @override
-  Future<GeneratedLesson> generate(String topic) async {
+  Future<GeneratedLesson> generate(
+    String topic, {
+    GeneratableActivityType type = GeneratableActivityType.match,
+  }) async {
     await Future.delayed(const Duration(milliseconds: 600));
     if (failGeneration) {
       throw const LessonGenerationException(
@@ -171,6 +203,7 @@ class MockLessonGeneratorService implements LessonGeneratorService {
     return GeneratedLesson(
       unitId: 'mock-unit-id',
       lessonTitle: topic,
+      activityType: type.value,
       items: const [
         GeneratedItemPreview(promptText: 'いす', glyph: '🪑', difficulty: 1),
         GeneratedItemPreview(promptText: 'つくえ', glyph: '🪵', difficulty: 2),
