@@ -20,6 +20,19 @@ class _FakeConsentStore implements ConsentStore {
   }
 }
 
+/// Fake that fails on the first call, then succeeds on subsequent calls.
+class _FailOnceThenSucceedConsentStore implements ConsentStore {
+  int callCount = 0;
+  final Map<String, bool> givenByLearner = {};
+
+  @override
+  Future<void> setConsentGiven(String learnerId, bool given) async {
+    callCount++;
+    if (callCount == 1) throw Exception('simulated write failure');
+    givenByLearner[learnerId] = given;
+  }
+}
+
 Future<void> _pump(WidgetTester tester, _FakeConsentStore store) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -108,6 +121,66 @@ void main() {
         find.byKey(const Key('consent_answer_field')), '${a + b}');
     await tester.tap(find.byKey(const Key('consent_checkbox')));
     await tester.pump();
+    await tester.tap(find.byKey(const Key('consent_continue_button')));
+    await tester.pump();
+    await tester.pump();
+
+    expect(store.givenByLearner['test-learner'], isTrue);
+    expect(find.text('Playing!'), findsOneWidget);
+  });
+
+  testWidgets(
+      'write failure shows error and re-enables button; retry succeeds',
+      (tester) async {
+    final store = _FailOnceThenSucceedConsentStore();
+
+    const lesson = Lesson(id: 'L', title: 'Test', activities: []);
+    final router = GoRouter(
+      initialLocation: '/consent',
+      routes: [
+        GoRoute(
+          path: '/consent',
+          builder: (context, state) =>
+              const ConsentGatePage(pendingLesson: lesson),
+        ),
+        GoRoute(
+          path: '/play',
+          builder: (context, state) => const Scaffold(body: Text('Playing!')),
+        ),
+      ],
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          consentStoreProvider.overrideWithValue(store),
+          learnerIdProvider.overrideWithValue('test-learner'),
+        ],
+        child: MaterialApp.router(routerConfig: router),
+      ),
+    );
+    await tester.pump();
+
+    final (a, b) = _readQuestion(tester);
+    await tester.enterText(
+        find.byKey(const Key('consent_answer_field')), '${a + b}');
+    await tester.tap(find.byKey(const Key('consent_checkbox')));
+    await tester.pump();
+
+    // First attempt: the store throws.
+    await tester.tap(find.byKey(const Key('consent_continue_button')));
+    await tester.pump();
+    await tester.pump();
+
+    // (1) Error message is shown.
+    expect(find.textContaining('Something went wrong saving that'), findsOneWidget);
+    // (2) Continue button is re-enabled (no spinner, onPressed is not null).
+    expect(find.text('Continue'), findsOneWidget);
+    final button = tester.widget<FilledButton>(
+        find.byKey(const Key('consent_continue_button')));
+    expect(button.onPressed, isNotNull);
+
+    // (3) Tapping Continue again retries and succeeds.
     await tester.tap(find.byKey(const Key('consent_continue_button')));
     await tester.pump();
     await tester.pump();
