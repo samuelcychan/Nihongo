@@ -108,6 +108,8 @@ interface GeneratedItem {
 
 interface GeneratedLesson {
   lesson_title: string;
+  has_inherent_order: boolean;
+  order_rationale: string;
   items: GeneratedItem[];
 }
 
@@ -115,6 +117,30 @@ const ITEM_SCHEMA = {
   type: "object",
   properties: {
     lesson_title: { type: "string" },
+    // Declared before `items` (same self-critique-in-schema trick as each
+    // item's self_check) so the model commits to whether this topic has a
+    // real order BEFORE generating items -- for a 'sequence' lesson, the
+    // item array order becomes the "correct" answer order (checked in the
+    // fetch handler below), so an arbitrary/ungrounded ordering would
+    // silently produce an unfairly-guessable game for a child.
+    has_inherent_order: {
+      type: "boolean",
+      description:
+        "True only if this topic has a genuine, well-known inherent " +
+        "sequence a young child could reason about and would recognize -- " +
+        "e.g. days of the week, months, counting order, steps in a daily " +
+        "routine (waking up -> breakfast -> school). False for a topic " +
+        "that is just a themed group of words with no natural order (e.g. " +
+        "'school supplies', 'farm animals', 'fruits', 'colors').",
+    },
+    order_rationale: {
+      type: "string",
+      description:
+        "One sentence. If has_inherent_order is true, name the ordering " +
+        "principle (e.g. 'calendar order', 'chronological routine order') " +
+        "and list items in that exact order in the items array below. If " +
+        "false, briefly say why this topic has no natural order.",
+    },
     items: {
       type: "array",
       minItems: MIN_ITEMS,
@@ -146,7 +172,7 @@ const ITEM_SCHEMA = {
       },
     },
   },
-  required: ["lesson_title", "items"],
+  required: ["lesson_title", "has_inherent_order", "order_rationale", "items"],
   additionalProperties: false,
 } as const;
 
@@ -159,7 +185,22 @@ class GenerationError extends Error {
   }
 }
 
-async function callOpenAI(topic: string): Promise<GeneratedLesson> {
+async function callOpenAI(
+  topic: string,
+  activityType: ActivityType,
+): Promise<GeneratedLesson> {
+  const sequenceNote = activityType === "sequence"
+    ? "This lesson will be played as a 'put the items in order' game -- " +
+      "the child sees the items shuffled and must tap them back into the " +
+      "exact order you return them in. Be honest and strict about " +
+      "has_inherent_order: only true for a topic with a real, well-known " +
+      "sequence (calendar/counting/routine order), not just a themed word " +
+      "group. Getting this wrong means a child is asked to guess an " +
+      "arbitrary order with no way to reason about it, which is " +
+      "unreasonable and demotivating rather than educational."
+    : "This lesson will be played as a matching or drag-and-drop game, " +
+      "not an ordering game -- has_inherent_order does not affect " +
+      "gameplay here, but still answer it honestly.";
   const content = await callLLM(
     [
       {
@@ -178,7 +219,7 @@ async function callOpenAI(topic: string): Promise<GeneratedLesson> {
           "concept; never reach for a scientific/taxonomic name, a rare or " +
           "obscure synonym, or formal/literary register just because it is " +
           "technically correct -- use the self_check field on each item to " +
-          "verify this before answering.",
+          `verify this before answering. ${sequenceNote}`,
       },
       { role: "user", content: `Topic: ${topic}` },
     ],
@@ -525,7 +566,7 @@ export default {
 
     let lesson: GeneratedLesson;
     try {
-      lesson = await callOpenAI(topic);
+      lesson = await callOpenAI(topic, activityType);
     } catch (e) {
       const err = e as GenerationError;
       // Explicit, visible error -- never a silent drop (failure-modes table
@@ -533,6 +574,26 @@ export default {
       return Response.json({ error: `generation failed: ${err.message}` }, {
         status: err.status ?? 502,
       });
+    }
+
+    // A sequence lesson's item order IS the answer -- if the topic has no
+    // real inherent order, the child would be asked to guess an arbitrary
+    // one, which teaches nothing and is just frustrating. Fail fast here
+    // (before spending a second LLM call on translation verification)
+    // rather than silently publishing an unreasonable lesson.
+    if (activityType === "sequence" && !lesson.has_inherent_order) {
+      return Response.json(
+        {
+          error: `"${topic}" doesn't have a natural order for a sequence lesson`,
+          details: [
+            lesson.order_rationale,
+            "Try a topic with a real sequence -- days of the week, months, " +
+              "numbers, or steps in a daily routine -- or use Match / " +
+              "Drag & Drop for this topic instead.",
+          ],
+        },
+        { status: 422 },
+      );
     }
 
     let verificationNotes: string[];
