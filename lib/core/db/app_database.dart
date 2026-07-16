@@ -50,17 +50,34 @@ class LearnerSettings extends Table {
   /// the first play session; anonymous auth continues underneath either way.
   BoolColumn get consentGiven => boolean().withDefault(const Constant(false))();
 
+  /// M2 NFR-a11y "no-reading" mode: activities hide prompt text and rely on
+  /// audio + pictures only, so pre-readers can play with no on-screen text.
+  BoolColumn get noReadingMode => boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {learnerId};
 }
 
-@DriftDatabase(tables: [LocalItemStates, LearnerSettings])
+/// M2 NFR-offline: durable cache of fetched course content, so a lesson the
+/// learner has loaded once stays fully playable with no network. One row per
+/// course holding the serialized lesson list -- ContentRepository owns the
+/// (de)serialization; this table just stores the JSON.
+class CachedCourses extends Table {
+  TextColumn get courseId => text()();
+  TextColumn get payload => text()();
+  DateTimeColumn get updatedAt => dateTime()();
+
+  @override
+  Set<Column> get primaryKey => {courseId};
+}
+
+@DriftDatabase(tables: [LocalItemStates, LearnerSettings, CachedCourses])
 class AppDatabase extends _$AppDatabase implements ConsentStore {
   AppDatabase([QueryExecutor? executor])
       : super(executor ?? driftDatabase(name: 'kids_lang'));
 
   @override
-  int get schemaVersion => 3;
+  int get schemaVersion => 4;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -71,6 +88,10 @@ class AppDatabase extends _$AppDatabase implements ConsentStore {
           }
           if (from < 3) {
             await m.addColumn(learnerSettings, learnerSettings.consentGiven);
+          }
+          if (from < 4) {
+            await m.addColumn(learnerSettings, learnerSettings.noReadingMode);
+            await m.createTable(cachedCourses);
           }
         },
       );
@@ -126,12 +147,39 @@ class AppDatabase extends _$AppDatabase implements ConsentStore {
   Future<void> setConsentGiven(String learnerId, bool given) =>
       _upsertSettings(learnerId, consentGiven: given);
 
+  /// Reactive no-reading-mode flag (M2 NFR-a11y), false when unset.
+  Stream<bool> watchNoReadingMode(String learnerId) =>
+      (select(learnerSettings)..where((t) => t.learnerId.equals(learnerId)))
+          .watchSingleOrNull()
+          .map((row) => row?.noReadingMode ?? false);
+
+  Future<void> setNoReadingMode(String learnerId, bool enabled) =>
+      _upsertSettings(learnerId, noReadingMode: enabled);
+
+  /// M2 NFR-offline content cache: last-fetched lesson JSON for [courseId].
+  Future<String?> cachedCoursePayload(String courseId) async {
+    final row = await (select(cachedCourses)
+          ..where((t) => t.courseId.equals(courseId)))
+        .getSingleOrNull();
+    return row?.payload;
+  }
+
+  Future<void> cacheCoursePayload(String courseId, String payload) =>
+      into(cachedCourses).insertOnConflictUpdate(
+        CachedCoursesCompanion(
+          courseId: Value(courseId),
+          payload: Value(payload),
+          updatedAt: Value(DateTime.now()),
+        ),
+      );
+
   /// Merges into the existing row (if any) rather than a plain
   /// insertOnConflictUpdate, so setting one field never clobbers the other.
   Future<void> _upsertSettings(
     String learnerId, {
     int? dailyLimitMinutes,
     bool? consentGiven,
+    bool? noReadingMode,
   }) async {
     final existing = await (select(learnerSettings)
           ..where((t) => t.learnerId.equals(learnerId)))
@@ -141,6 +189,7 @@ class AppDatabase extends _$AppDatabase implements ConsentStore {
         learnerId: Value(learnerId),
         dailyLimitMinutes: Value(dailyLimitMinutes ?? existing?.dailyLimitMinutes ?? 30),
         consentGiven: Value(consentGiven ?? existing?.consentGiven ?? false),
+        noReadingMode: Value(noReadingMode ?? existing?.noReadingMode ?? false),
       ),
     );
   }

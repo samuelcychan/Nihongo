@@ -14,6 +14,7 @@ abstract class ResultsSink {
     required bool correct,
     required int attempts,
     Duration? responseTime,
+    double? pronunciationScore,
   });
 
   /// Pushes any locally-queued (unsynced) results to the backend. Safe to call
@@ -41,6 +42,10 @@ class ResultsRepository implements ResultsSink {
   final SrsScheduler _scheduler;
 
   /// Records the outcome of answering [item] and returns the updated row.
+  ///
+  /// When [pronunciationScore] is provided (the speak activity), it drives
+  /// the SRS quality signal instead of the binary outcome and is persisted
+  /// to `pronunciation_score` (PRD F3).
   @override
   Future<LocalItemState> recordResult({
     required String learnerId,
@@ -48,6 +53,7 @@ class ResultsRepository implements ResultsSink {
     required bool correct,
     required int attempts,
     Duration? responseTime,
+    double? pronunciationScore,
   }) async {
     final now = DateTime.now();
 
@@ -63,11 +69,13 @@ class ResultsRepository implements ResultsSink {
             dueAt: prior.dueAt,
           );
 
-    final quality = _scheduler.qualityFromOutcome(
-      correct: correct,
-      attempts: attempts,
-      responseTime: responseTime,
-    );
+    final quality = pronunciationScore != null
+        ? _scheduler.qualityFromPronunciation(pronunciationScore)
+        : _scheduler.qualityFromOutcome(
+            correct: correct,
+            attempts: attempts,
+            responseTime: responseTime,
+          );
     final next = _scheduler.review(priorSrs, quality, now: now);
 
     final companion = LocalItemStatesCompanion(
@@ -79,6 +87,9 @@ class ResultsRepository implements ResultsSink {
           Value((prior?.incorrectCount ?? 0) + (correct ? 0 : 1)),
       attempts: Value((prior?.attempts ?? 0) + attempts),
       lastResponseMs: Value(responseTime?.inMilliseconds),
+      pronunciationScore: pronunciationScore != null
+          ? Value(pronunciationScore)
+          : const Value.absent(),
       ease: Value(next.ease),
       intervalDays: Value(next.intervalDays),
       repetitions: Value(next.repetitions),

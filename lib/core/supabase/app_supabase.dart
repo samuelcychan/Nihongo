@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 /// Build-time configuration, injected via `--dart-define` so secrets never live
@@ -26,7 +27,17 @@ Future<SupabaseClient> initSupabase() async {
   );
   final client = Supabase.instance.client;
   if (client.auth.currentSession == null) {
-    await client.auth.signInAnonymously();
+    // M3 NFR-perf: first-run cold start must not hold the splash hostage on a
+    // slow network -- bound the sign-in wait and boot anyway on timeout.
+    // learnerIdProvider is auth-reactive, so if the sign-in lands later (or on
+    // the next launch) the app picks the real uid up without a restart.
+    try {
+      await client.auth
+          .signInAnonymously()
+          .timeout(const Duration(seconds: 6));
+    } catch (e) {
+      debugPrint('Anonymous sign-in deferred (will retry next launch): $e');
+    }
   }
   return client;
 }

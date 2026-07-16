@@ -52,6 +52,20 @@ class Item {
         difficulty: (m['difficulty'] as num?)?.toInt() ?? 1,
         position: (m['position'] as num?)?.toInt() ?? 0,
       );
+
+  /// Round-trips through [Item.fromMap] (same snake_case keys as the Supabase
+  /// rows) -- used by the M2 offline content cache.
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'activity_id': activityId,
+        'answer': answer,
+        'prompt_text': promptText,
+        'prompt_audio_url': promptAudioUrl,
+        'image_url': imageUrl,
+        'glyph': glyph,
+        'difficulty': difficulty,
+        'position': position,
+      };
 }
 
 /// An activity — for the slice always a tap-to-match mini-game.
@@ -87,6 +101,17 @@ class Activity {
         items: items,
         config: (m['config'] as Map?)?.cast<String, dynamic>() ?? const {},
       );
+
+  /// Round-trips through [Activity.fromMap] with items inlined -- used by the
+  /// M2 offline content cache.
+  Map<String, dynamic> toMap() => {
+        'id': id,
+        'lesson_id': lessonId,
+        'type': type,
+        'title': title,
+        'config': config,
+        'items': [for (final i in items) i.toMap()],
+      };
 }
 
 /// A lesson with its activities (the unit the learner opens and plays).
@@ -108,4 +133,30 @@ class Lesson {
   /// All items across the lesson's activities, in order.
   List<Item> get allItems =>
       [for (final a in activities) ...a.items];
+
+  /// Deserializes a lesson cached by the M2 offline content cache.
+  factory Lesson.fromCacheMap(Map<String, dynamic> m) => Lesson(
+        id: m['id'] as String,
+        title: m['title'] as String? ?? '',
+        targetLanguage: m['target_language'] as String? ?? 'en-US',
+        activities: [
+          for (final a in (m['activities'] as List? ?? const []))
+            Activity.fromMap(
+              (a as Map).cast<String, dynamic>(),
+              items: [
+                for (final i in (a['items'] as List? ?? const []))
+                  Item.fromMap((i as Map).cast<String, dynamic>()),
+              ],
+            ),
+        ],
+      );
+
+  /// Round-trips through [Lesson.fromCacheMap] -- used by the M2 offline
+  /// content cache.
+  Map<String, dynamic> toCacheMap() => {
+        'id': id,
+        'title': title,
+        'target_language': targetLanguage,
+        'activities': [for (final a in activities) a.toMap()],
+      };
 }

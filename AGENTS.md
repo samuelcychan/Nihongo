@@ -11,9 +11,15 @@ feedback, adaptive spaced repetition, and offline-first progress that syncs to *
 Audience: ages 6–10, mixed home/classroom. Current content teaches **Japanese**
 (`target_language = 'ja'`); the target language is data-driven, not hardcoded.
 
-Status: a working **vertical slice** (one "Animals" lesson, tap-to-match) plus a "Sprout"
-visual reskin with extra screens. Requirements: [docs/PRD.md](docs/PRD.md). Architecture and
-scope: [docs/design.md](docs/design.md).
+Status: **M0–M2 complete, M3 code-complete** (see
+[docs/implementation-plan.md](docs/implementation-plan.md)) — four activity types
+(match, drag-drop, sequence, speak), AI lesson generator with teacher curation
+(approve/edit/reject), speech input + pronunciation-fed SRS, offline content cache,
+consent gate, no-reading mode, real parent dashboard, iOS CI parity. Open M3 items are
+human/legal/hardware (see [docs/compliance-checklist.md](docs/compliance-checklist.md)
+and [docs/a11y-perf-audit.md](docs/a11y-perf-audit.md)).
+Requirements: [docs/PRD.md](docs/PRD.md). Architecture and scope:
+[docs/design.md](docs/design.md).
 
 ## Run / build / test
 Supabase credentials are injected at build time and **never committed**. Preferred: a
@@ -73,19 +79,23 @@ lib/
     theme/app_theme.dart          # "Sprout" design tokens + ThemeData (google_fonts)
     providers.dart                # ALL Riverpod providers (plain, no codegen)
   core/
-    audio/audio_service.dart      # AudioService (flutter_tts); language is per-call
-    speech/speech_service.dart    # SpeechService interface + Unavailable stub (F2, deferred)
-    db/app_database.dart(.g.dart) # drift: LocalItemStates (offline cache + outbox flag)
+    audio/audio_service.dart      # AudioService (flutter_tts + just_audio); language per-call
+    speech/speech_service.dart    # SpeechService interface (F2)
+    speech/on_device_speech_service.dart  # M2: platform recognizer; audio never leaves device
+    speech/pronunciation_scorer.dart      # M2: pure scoring fn -> pronunciation_score
+    db/app_database.dart(.g.dart) # drift: LocalItemStates + LearnerSettings + CachedCourses
     srs/srs_scheduler.dart        # SM-2-lite spaced repetition (pure Dart, unit-tested)
     supabase/app_supabase.dart    # Env (String.fromEnvironment) + initSupabase()
     sync/connectivity_sync.dart   # drains outbox on reconnect (connectivity_plus)
   domain/models/content.dart      # Course/Unit/Lesson/Activity/Item (plain immutable)
   data/
-    content_repository.dart       # reads published content from Supabase (+ target lang)
+    content_repository.dart       # published content from Supabase + drift offline cache (M2)
     results_repository.dart       # ResultsSink: offline-first write + outbox sync (SRS)
-  features/{learner_home, lesson_map, activity_match, round_complete, progress, parent_dashboard}
-supabase/migrations/              # 0001 schema+RLS+grants, 0002 seed, 0003 -> Japanese
-test/                             # srs_scheduler_test, activity_match_test
+  features/{learner_home, lesson_map, activity_match, activity_dragdrop, activity_sequence,
+            activity_speak, consent_gate, lesson_generator, teacher_auth, round_complete,
+            progress, parent_dashboard}
+supabase/migrations/              # 0001 schema+RLS+grants ... 0008 drag_drop type
+test/                             # unit + widget tests per activity (fake-based, no real DB)
 ```
 
 ## Conventions (follow these)

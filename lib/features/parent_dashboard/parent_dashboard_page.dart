@@ -17,6 +17,7 @@ class ParentDashboardPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final metrics = ref.watch(parentMetricsProvider);
     final dailyLimit = ref.watch(dailyLimitMinutesProvider).value ?? 30;
+    final noReading = ref.watch(noReadingModeProvider).value ?? false;
 
     final week = metrics.weekFractions;
     const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
@@ -214,6 +215,30 @@ class ParentDashboardPage extends ConsumerWidget {
                         .read(appDatabaseProvider)
                         .setDailyLimitMinutes(
                             ref.read(learnerIdProvider), dailyLimit + 5),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 14),
+            // no-reading mode (M2 NFR-a11y): audio-only prompts for pre-readers
+            Container(
+              padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
+              decoration: AppTheme.cardDecoration(border: const Color(0xFFECE5D9)),
+              child: Row(
+                children: [
+                  const Expanded(
+                    child: Text('No-reading mode (audio only)',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w700,
+                            fontSize: 13,
+                            color: AppTheme.ink)),
+                  ),
+                  Switch(
+                    key: const Key('no_reading_switch'),
+                    value: noReading,
+                    onChanged: (v) => ref
+                        .read(appDatabaseProvider)
+                        .setNoReadingMode(ref.read(learnerIdProvider), v),
                   ),
                 ],
               ),

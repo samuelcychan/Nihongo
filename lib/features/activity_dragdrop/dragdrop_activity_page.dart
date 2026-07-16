@@ -167,29 +167,35 @@ class _DropTargetTile extends StatelessWidget {
       onWillAcceptWithDetails: (details) => !matched,
       onAcceptWithDetails: (details) => onAccept(details.data),
       builder: (context, candidateData, rejectedData) {
-        return Container(
-          key: Key('drop_target_${item.id}'),
-          constraints: const BoxConstraints(minHeight: AppTheme.minTapTarget * 0.6),
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          decoration: BoxDecoration(
-            color: bg,
-            borderRadius: BorderRadius.circular(AppTheme.tileRadius),
-            border: Border.all(
-              color: candidateData.isNotEmpty ? AppTheme.sky : border,
-              width: candidateData.isNotEmpty ? 4 : 2,
-            ),
-          ),
-          alignment: Alignment.centerLeft,
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  item.promptText ?? item.answer,
-                  style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 18),
-                ),
+        return Semantics(
+          label: 'Drop target: ${item.promptText ?? item.answer}'
+              '${matched ? ', matched' : ''}',
+          child: Container(
+            key: Key('drop_target_${item.id}'),
+            constraints:
+                const BoxConstraints(minHeight: AppTheme.minTapTarget * 0.6),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            decoration: BoxDecoration(
+              color: bg,
+              borderRadius: BorderRadius.circular(AppTheme.tileRadius),
+              border: Border.all(
+                color: candidateData.isNotEmpty ? AppTheme.sky : border,
+                width: candidateData.isNotEmpty ? 4 : 2,
               ),
-              if (icon != null) Icon(icon, color: iconColor, size: 22),
-            ],
+            ),
+            alignment: Alignment.centerLeft,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    item.promptText ?? item.answer,
+                    style: const TextStyle(
+                        fontWeight: FontWeight.w700, fontSize: 18),
+                  ),
+                ),
+                if (icon != null) Icon(icon, color: iconColor, size: 22),
+              ],
+            ),
           ),
         );
       },
@@ -218,11 +224,15 @@ class _DraggableTile extends StatelessWidget {
       child: ItemVisual(item: item, size: 40),
     );
 
-    return Draggable<Item>(
-      data: item,
-      feedback: Material(color: Colors.transparent, child: visual),
-      childWhenDragging: Opacity(opacity: 0.3, child: visual),
-      child: visual,
+    return Semantics(
+      button: true,
+      label: item.answer,
+      child: Draggable<Item>(
+        data: item,
+        feedback: Material(color: Colors.transparent, child: visual),
+        childWhenDragging: Opacity(opacity: 0.3, child: visual),
+        child: visual,
+      ),
     );
   }
 }

@@ -58,6 +58,30 @@ void main() {
     expect(find.textContaining('Drag & Drop'), findsOneWidget);
   });
 
+  testWidgets('teacher edits a drafted word before approving (M3 curation)',
+      (tester) async {
+    final service = MockLessonGeneratorService();
+    await _pump(tester, service);
+
+    await tester.enterText(find.byKey(const Key('topic_field')), 'classroom');
+    await tester.tap(find.byKey(const Key('generate_button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 700));
+
+    // Tap the first preview row to open the edit dialog and fix the word.
+    await tester.tap(find.byKey(const Key('edit_item_0')));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byKey(const Key('edit_word_field')), 'こくばん');
+    await tester.tap(find.byKey(const Key('edit_save_button')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 200));
+
+    // The service got the edit and the preview reflects it in place.
+    expect(service.editedWords['mock-i1'], 'こくばん');
+    expect(find.text('こくばん'), findsOneWidget);
+    expect(find.text('いす'), findsNothing);
+  });
+
   testWidgets('reject flow discards the draft without approving',
       (tester) async {
     await _pump(tester, MockLessonGeneratorService());

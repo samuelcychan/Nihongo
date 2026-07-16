@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import '../../app/providers.dart';
 import '../../app/theme/app_theme.dart';
 import '../../app/widgets/item_visual.dart';
+import '../../core/srs/srs_scheduler.dart';
 import '../../domain/models/content.dart';
 import '../round_complete/round_complete_page.dart';
 import 'match_round.dart';
@@ -44,7 +45,29 @@ class _ActivityMatchPageState extends ConsumerState<ActivityMatchPage> {
   @override
   void initState() {
     super.initState();
-    _rounds = const MatchRoundBuilder().build(_items);
+    // M2 F3: feed the learner's history into round ordering -- due/weak items
+    // first, then items nearest the adaptive difficulty target. The progress
+    // stream is already warm from the home screen; an empty first snapshot
+    // just means the neutral (no-history) ordering.
+    final rows = ref.read(progressProvider).value ?? const [];
+    final itemIds = {for (final i in _items) i.id};
+    final states = {
+      for (final r in rows)
+        if (itemIds.contains(r.itemId))
+          r.itemId: SrsState(
+            ease: r.ease,
+            intervalDays: r.intervalDays,
+            repetitions: r.repetitions,
+            dueAt: r.dueAt,
+          ),
+    };
+    final correct = rows.fold(0, (s, r) => s + r.correctCount);
+    final incorrect = rows.fold(0, (s, r) => s + r.incorrectCount);
+    final total = correct + incorrect;
+    // Need a handful of answers before steering means anything.
+    final accuracy = total >= 5 ? correct / total : null;
+    _rounds = const MatchRoundBuilder()
+        .build(_items, states: states, recentAccuracy: accuracy);
     WidgetsBinding.instance.addPostFrameCallback((_) => _speakTarget());
   }
 
@@ -130,22 +153,27 @@ class _ActivityMatchPageState extends ConsumerState<ActivityMatchPage> {
 
   @override
   Widget build(BuildContext context) {
+    // M2 NFR-a11y: in no-reading mode the caption text (the only on-screen
+    // text a child must read to play) is forced off and the toggle hidden --
+    // audio prompt + picture options carry the whole game.
+    final noReading = ref.watch(noReadingModeProvider).value ?? false;
     return Scaffold(
       appBar: AppBar(
         title: const Text('Tap the Animal'),
         actions: [
-          IconButton(
-            tooltip: 'Captions',
-            icon: Icon(_captions ? Icons.subtitles : Icons.subtitles_off),
-            onPressed: () => setState(() => _captions = !_captions),
-          ),
+          if (!noReading)
+            IconButton(
+              tooltip: 'Captions',
+              icon: Icon(_captions ? Icons.subtitles : Icons.subtitles_off),
+              onPressed: () => setState(() => _captions = !_captions),
+            ),
         ],
       ),
-      body: _finished ? _buildDone(context) : _buildRound(context),
+      body: _finished ? _buildDone(context) : _buildRound(context, noReading),
     );
   }
 
-  Widget _buildRound(BuildContext context) {
+  Widget _buildRound(BuildContext context, bool noReading) {
     return SafeArea(
       top: false,
       child: Column(
@@ -153,7 +181,7 @@ class _ActivityMatchPageState extends ConsumerState<ActivityMatchPage> {
           _ProgressDots(total: _rounds.length, index: _index),
           const SizedBox(height: 6),
           _PromptBar(
-            captionsOn: _captions,
+            captionsOn: _captions && !noReading,
             word: _round.target.promptText ?? _round.target.answer,
             onReplay: _speakTarget,
           ),

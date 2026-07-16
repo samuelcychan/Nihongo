@@ -66,5 +66,9 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>The Say the Word game listens to how the word is pronounced. Audio is processed on this device only and never recorded or uploaded.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Speech recognition checks the spoken word against the lesson word, on this device.</string>
 </dict>
 </plist>

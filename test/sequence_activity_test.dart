@@ -28,6 +28,7 @@ class _FakeResults implements ResultsSink {
     required bool correct,
     required int attempts,
     Duration? responseTime,
+    double? pronunciationScore,
   }) async {
     calls++;
     lastCorrect = correct;
