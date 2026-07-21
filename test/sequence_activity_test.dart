@@ -58,7 +58,27 @@ Lesson _lesson() => const Lesson(
       ],
     );
 
-Future<_FakeResults> _pump(WidgetTester tester) async {
+// Nine items -- more than the old hardcoded 6-item cap -- to guard against
+// the completability bug where AI-generated lessons (up to 10 items) could
+// never be marked passed because some items were never shown/playable.
+Lesson _bigLesson() => Lesson(
+      id: 'L2',
+      title: 'Big Lesson',
+      activities: [
+        Activity(
+          id: 'A2',
+          lessonId: 'L2',
+          type: 'sequence',
+          title: 'Sequence',
+          items: [
+            for (var i = 0; i < 9; i++)
+              Item(id: 'b$i', activityId: 'A2', answer: 'w$i', glyph: '⭐', position: i),
+          ],
+        ),
+      ],
+    );
+
+Future<_FakeResults> _pump(WidgetTester tester, {Lesson? lesson}) async {
   final results = _FakeResults();
   await tester.pumpWidget(
     ProviderScope(
@@ -67,7 +87,7 @@ Future<_FakeResults> _pump(WidgetTester tester) async {
         resultsRepositoryProvider.overrideWithValue(results),
         learnerIdProvider.overrideWithValue('test-learner'),
       ],
-      child: MaterialApp(home: SequenceActivityPage(lesson: _lesson())),
+      child: MaterialApp(home: SequenceActivityPage(lesson: lesson ?? _lesson())),
     ),
   );
   await tester.pump();
@@ -99,5 +119,19 @@ void main() {
     expect(find.byKey(const Key('pool_tile_i2')), findsOneWidget);
 
     await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets(
+      'a lesson with more items than the old 6-item cap shows every item '
+      '(regression: silently-dropped items made lessons unpassable)',
+      (tester) async {
+    await _pump(tester, lesson: _bigLesson());
+
+    for (var i = 0; i < 9; i++) {
+      expect(find.byKey(Key('slot_$i')), findsOneWidget);
+    }
+    for (var i = 0; i < 9; i++) {
+      expect(find.byKey(Key('pool_b$i')), findsOneWidget);
+    }
   });
 }

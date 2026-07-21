@@ -87,10 +87,39 @@ Lesson _lesson() => const Lesson(
       ],
     );
 
+// Nine items -- more than the old hardcoded 8-item cap -- to guard against
+// the completability bug where AI-generated lessons (up to 10 items) could
+// never be marked passed because some items were never shown/playable.
+Lesson _bigLesson() => const Lesson(
+      id: 'L2',
+      title: 'Big Lesson',
+      targetLanguage: 'ja-JP',
+      activities: [
+        Activity(
+          id: 'A2',
+          lessonId: 'L2',
+          type: 'speak',
+          title: 'Say the Word',
+          items: [
+            Item(id: 'b0', activityId: 'A2', answer: 'w0', promptText: 'w0', glyph: '⭐'),
+            Item(id: 'b1', activityId: 'A2', answer: 'w1', promptText: 'w1', glyph: '⭐'),
+            Item(id: 'b2', activityId: 'A2', answer: 'w2', promptText: 'w2', glyph: '⭐'),
+            Item(id: 'b3', activityId: 'A2', answer: 'w3', promptText: 'w3', glyph: '⭐'),
+            Item(id: 'b4', activityId: 'A2', answer: 'w4', promptText: 'w4', glyph: '⭐'),
+            Item(id: 'b5', activityId: 'A2', answer: 'w5', promptText: 'w5', glyph: '⭐'),
+            Item(id: 'b6', activityId: 'A2', answer: 'w6', promptText: 'w6', glyph: '⭐'),
+            Item(id: 'b7', activityId: 'A2', answer: 'w7', promptText: 'w7', glyph: '⭐'),
+            Item(id: 'b8', activityId: 'A2', answer: 'w8', promptText: 'w8', glyph: '⭐'),
+          ],
+        ),
+      ],
+    );
+
 Future<_FakeResults> _pump(
   WidgetTester tester, {
   required SpeechService speech,
   bool noReading = false,
+  Lesson? lesson,
 }) async {
   final results = _FakeResults();
   await tester.pumpWidget(
@@ -102,7 +131,7 @@ Future<_FakeResults> _pump(
         speechServiceProvider.overrideWithValue(speech),
         noReadingModeProvider.overrideWith((ref) => Stream.value(noReading)),
       ],
-      child: MaterialApp(home: SpeakActivityPage(lesson: _lesson())),
+      child: MaterialApp(home: SpeakActivityPage(lesson: lesson ?? _lesson())),
     ),
   );
   await tester.pump(); // availability probe resolves
@@ -169,5 +198,30 @@ void main() {
     // The game is still fully playable -- mic and replay affordances remain.
     expect(find.byKey(const Key('speak_mic_button')), findsOneWidget);
     expect(find.byKey(const Key('speak_replay_button')), findsOneWidget);
+  });
+
+  testWidgets(
+      'a lesson with more items than the old 8-item cap plays every item '
+      '(regression: silently-dropped items made lessons unpassable)',
+      (tester) async {
+    final results = await _pump(
+      tester,
+      speech: _FakeSpeech(scores: List.filled(9, 0.9)),
+      lesson: _bigLesson(),
+    );
+
+    // Stop one short of the last item -- finishing triggers a '/complete'
+    // navigation, and these tests run without a GoRouter (same rationale as
+    // the other activity tests' "never trigger the final round" fixtures).
+    for (var i = 0; i < 8; i++) {
+      await tester.tap(find.byKey(const Key('speak_mic_button')));
+      await tester.pump();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 1300));
+    }
+
+    expect(results.calls, 8);
+    // Reaching item 9 (the old cap was 8) proves nothing was silently dropped.
+    expect(find.text('9/9'), findsOneWidget);
   });
 }

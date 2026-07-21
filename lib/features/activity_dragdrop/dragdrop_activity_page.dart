@@ -23,8 +23,14 @@ class DragDropActivityPage extends ConsumerStatefulWidget {
 }
 
 class _DragDropActivityPageState extends ConsumerState<DragDropActivityPage> {
-  /// Keeps the board on one screen without scrolling for young learners.
-  static const _maxPairs = 5;
+  /// Matches the AI generator's MAX_ITEMS (supabase/functions/generate-lesson) --
+  /// every item a lesson claims to teach must actually be playable here, or it
+  /// can never earn a repetition and courseProgressProvider.isPassed() (which
+  /// requires every item to have one) permanently soft-locks the learner on
+  /// this lesson. Previously capped at 5 "to fit one screen"; the board now
+  /// scrolls instead, since dropping items silently was a correctness bug,
+  /// not a real UX tradeoff.
+  static const _maxPairs = 10;
 
   late final List<Item> _targets;
   late final List<Item> _draggables;
@@ -105,32 +111,36 @@ class _DragDropActivityPageState extends ConsumerState<DragDropActivityPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: Column(
-                  children: [
-                    for (final item in _targets)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: _DropTargetTile(
-                          key: ValueKey('target_${item.id}'),
-                          item: item,
-                          matched: _matchedIds.contains(item.id),
-                          wrong: _wrongFlashTargetId == item.id,
-                          onAccept: (dragged) => _onDrop(dragged, item),
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (final item in _targets)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: _DropTargetTile(
+                            key: ValueKey('target_${item.id}'),
+                            item: item,
+                            matched: _matchedIds.contains(item.id),
+                            wrong: _wrongFlashTargetId == item.id,
+                            onAccept: (dragged) => _onDrop(dragged, item),
+                          ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               const SizedBox(width: AppTheme.gap),
               Expanded(
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    for (final item in _draggables)
-                      if (!_matchedIds.contains(item.id))
-                        _DraggableTile(key: ValueKey('drag_${item.id}'), item: item),
-                  ],
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      for (final item in _draggables)
+                        if (!_matchedIds.contains(item.id))
+                          _DraggableTile(key: ValueKey('drag_${item.id}'), item: item),
+                    ],
+                  ),
                 ),
               ),
             ],

@@ -29,7 +29,6 @@ class SpeakActivityPage extends ConsumerStatefulWidget {
 }
 
 class _SpeakActivityPageState extends ConsumerState<SpeakActivityPage> {
-  static const _maxItems = 8;
   static const _passScore = 0.5;
   static const _maxTriesPerItem = 2;
 
@@ -48,7 +47,11 @@ class _SpeakActivityPageState extends ConsumerState<SpeakActivityPage> {
   @override
   void initState() {
     super.initState();
-    _items = widget.lesson.allItems.take(_maxItems).toList();
+    // No item cap: unlike drag-drop/sequence there's no "must fit one
+    // screen" constraint (items are shown one at a time), and dropping
+    // items here silently made lessons with >8 items permanently unpassable
+    // (courseProgressProvider.isPassed() requires a repetition on every item).
+    _items = widget.lesson.allItems;
     WidgetsBinding.instance.addPostFrameCallback((_) => _probeSpeech());
   }
 
