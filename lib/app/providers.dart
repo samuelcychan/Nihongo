@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/audio/audio_service.dart';
 import '../core/db/app_database.dart';
+import '../core/speech/on_device_speech_service.dart';
 import '../core/speech/speech_service.dart';
 import '../core/supabase/app_supabase.dart';
 import '../core/sync/connectivity_sync.dart';
@@ -31,12 +32,17 @@ final audioServiceProvider = Provider<AudioService>((ref) {
   return service;
 });
 
-/// Speech input — stub for the slice (see [SpeechService]).
+/// Speech input (M2 F2): on-device platform recognition. Overridable in
+/// tests; degrades to "unavailable" at runtime when the device has no
+/// recognizer or the mic permission is denied (SpeakActivityPage handles it).
 final speechServiceProvider =
-    Provider<SpeechService>((ref) => const UnavailableSpeechService());
+    Provider<SpeechService>((ref) => OnDeviceSpeechService());
 
 final contentRepositoryProvider = Provider<ContentRepository>(
-  (ref) => ContentRepository(ref.watch(supabaseClientProvider)),
+  (ref) => ContentRepository(
+    ref.watch(supabaseClientProvider),
+    db: ref.watch(appDatabaseProvider),
+  ),
 );
 
 final resultsRepositoryProvider = Provider<ResultsSink>(
@@ -46,8 +52,11 @@ final resultsRepositoryProvider = Provider<ResultsSink>(
   ),
 );
 
-/// Current learner's id (anonymous auth uid for the slice).
+/// Current learner's id (anonymous auth uid for the slice). Auth-reactive
+/// (M3 NFR-perf follow-through): if the bounded first-run sign-in in
+/// initSupabase lands after boot, watchers pick up the real uid immediately.
 final learnerIdProvider = Provider<String>((ref) {
+  ref.watch(authStateProvider);
   return ref.watch(supabaseClientProvider).auth.currentUser?.id ?? 'anonymous';
 });
 
@@ -171,6 +180,14 @@ final consentGivenProvider = StreamProvider<bool>((ref) {
 /// database backend.
 final consentStoreProvider = Provider<ConsentStore>((ref) => ref.watch(appDatabaseProvider));
 
+/// M2 NFR-a11y "no-reading" mode: when true, activities hide prompt text and
+/// rely on audio + pictures only (toggled from the parent dashboard).
+final noReadingModeProvider = StreamProvider<bool>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  final learnerId = ref.watch(learnerIdProvider);
+  return db.watchNoReadingMode(learnerId);
+});
+
 /// Drains the offline outbox on reconnect. Kept alive by watching it from the
 /// home page; starts listening to connectivity on creation.
 ///
@@ -203,6 +220,7 @@ class _NoopResultsSink implements ResultsSink {
     required bool correct,
     required int attempts,
     Duration? responseTime,
+    double? pronunciationScore,
   }) async {}
 
   @override

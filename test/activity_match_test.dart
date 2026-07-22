@@ -28,6 +28,7 @@ class _FakeResults implements ResultsSink {
     required bool correct,
     required int attempts,
     Duration? responseTime,
+    double? pronunciationScore,
   }) async {
     calls++;
     lastCorrect = correct;
@@ -62,6 +63,10 @@ Future<_FakeResults> _pump(WidgetTester tester) async {
         audioServiceProvider.overrideWithValue(_FakeAudio()),
         resultsRepositoryProvider.overrideWithValue(results),
         learnerIdProvider.overrideWithValue('test-learner'),
+        // The page reads these DB-backed providers (M2 difficulty steering +
+        // no-reading mode); override so tests never touch a real database.
+        progressProvider.overrideWith((ref) => Stream.value(const [])),
+        noReadingModeProvider.overrideWith((ref) => Stream.value(false)),
       ],
       child: MaterialApp(home: ActivityMatchPage(lesson: _lesson())),
     ),

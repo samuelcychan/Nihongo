@@ -6,11 +6,27 @@ class GeneratedItemPreview {
     required this.promptText,
     required this.glyph,
     required this.difficulty,
+    this.id,
   });
 
+  /// DB row id -- lets M3's curation edit this item in place before approval.
+  /// Null only for mocks/older function responses (edit is then hidden).
+  final String? id;
   final String promptText;
   final String glyph;
   final int difficulty;
+
+  GeneratedItemPreview copyWith({
+    String? promptText,
+    String? glyph,
+    int? difficulty,
+  }) =>
+      GeneratedItemPreview(
+        id: id,
+        promptText: promptText ?? this.promptText,
+        glyph: glyph ?? this.glyph,
+        difficulty: difficulty ?? this.difficulty,
+      );
 }
 
 /// Result of a successful generation — a draft unit sitting in the
@@ -37,7 +53,8 @@ class GeneratedLesson {
 enum GeneratableActivityType {
   match('match', 'Match'),
   dragDrop('drag_drop', 'Drag & Drop'),
-  sequence('sequence', 'Sequence');
+  sequence('sequence', 'Sequence'),
+  speak('speak', 'Say It');
 
   const GeneratableActivityType(this.value, this.label);
 
@@ -73,6 +90,15 @@ abstract class LessonGeneratorService {
   });
   Future<void> approve(String unitId);
   Future<void> reject(String unitId);
+
+  /// M3 curation: edit one drafted item before approving. Only fields passed
+  /// non-null change; the server keeps prompt_text/answer in lockstep.
+  Future<void> editItem(
+    String itemId, {
+    String? promptText,
+    String? glyph,
+    int? difficulty,
+  });
 }
 
 class SupabaseLessonGeneratorService implements LessonGeneratorService {
@@ -121,6 +147,7 @@ class SupabaseLessonGeneratorService implements LessonGeneratorService {
       items: [
         for (final row in itemsRaw.whereType<Map>())
           GeneratedItemPreview(
+            id: row['id'] as String?,
             promptText: row['prompt_text'] as String? ?? '',
             glyph: row['glyph'] as String? ?? '•',
             difficulty: ((row['difficulty'] as num?) ?? 1).toInt(),
@@ -134,6 +161,35 @@ class SupabaseLessonGeneratorService implements LessonGeneratorService {
 
   @override
   Future<void> reject(String unitId) => _review('reject', unitId);
+
+  @override
+  Future<void> editItem(
+    String itemId, {
+    String? promptText,
+    String? glyph,
+    int? difficulty,
+  }) async {
+    final FunctionResponse res;
+    try {
+      res = await _client.functions.invoke(
+        'generate-lesson',
+        body: {
+          'action': 'edit_item',
+          'item_id': itemId,
+          'prompt_text': ?promptText,
+          'glyph': ?glyph,
+          'difficulty': ?difficulty,
+        },
+      );
+    } on FunctionException catch (e) {
+      throw _fromFunctionException(e, 'edit failed');
+    } catch (e) {
+      throw LessonGenerationException('Could not reach the generator: $e');
+    }
+    if (res.status >= 400) {
+      throw _fromErrorMap(_asMap(res.data), 'edit failed');
+    }
+  }
 
   Future<void> _review(String action, String unitId) async {
     final FunctionResponse res;
@@ -205,12 +261,12 @@ class MockLessonGeneratorService implements LessonGeneratorService {
       lessonTitle: topic,
       activityType: type.value,
       items: const [
-        GeneratedItemPreview(promptText: 'いす', glyph: '🪑', difficulty: 1),
-        GeneratedItemPreview(promptText: 'つくえ', glyph: '🪵', difficulty: 2),
-        GeneratedItemPreview(promptText: 'ほん', glyph: '📚', difficulty: 1),
-        GeneratedItemPreview(promptText: 'えんぴつ', glyph: '✏️', difficulty: 2),
-        GeneratedItemPreview(promptText: 'かばん', glyph: '🎒', difficulty: 3),
-        GeneratedItemPreview(promptText: 'とけい', glyph: '⏰', difficulty: 3),
+        GeneratedItemPreview(id: 'mock-i1', promptText: 'いす', glyph: '🪑', difficulty: 1),
+        GeneratedItemPreview(id: 'mock-i2', promptText: 'つくえ', glyph: '🪵', difficulty: 2),
+        GeneratedItemPreview(id: 'mock-i3', promptText: 'ほん', glyph: '📚', difficulty: 1),
+        GeneratedItemPreview(id: 'mock-i4', promptText: 'えんぴつ', glyph: '✏️', difficulty: 2),
+        GeneratedItemPreview(id: 'mock-i5', promptText: 'かばん', glyph: '🎒', difficulty: 3),
+        GeneratedItemPreview(id: 'mock-i6', promptText: 'とけい', glyph: '⏰', difficulty: 3),
       ],
     );
   }
@@ -223,5 +279,19 @@ class MockLessonGeneratorService implements LessonGeneratorService {
   @override
   Future<void> reject(String unitId) async {
     await Future.delayed(const Duration(milliseconds: 300));
+  }
+
+  /// Edited item ids -> latest word, so tests can assert the edit round-trip.
+  final Map<String, String> editedWords = {};
+
+  @override
+  Future<void> editItem(
+    String itemId, {
+    String? promptText,
+    String? glyph,
+    int? difficulty,
+  }) async {
+    await Future.delayed(const Duration(milliseconds: 100));
+    if (promptText != null) editedWords[itemId] = promptText;
   }
 }

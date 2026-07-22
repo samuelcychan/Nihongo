@@ -84,10 +84,15 @@ const MAX_ITEMS = 10;
 const GLYPH_SEGMENTER = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 // The activity types the Flutter client actually renders a page for (see
-// app_router.dart's '/play' dispatch) -- 'trace' and 'speak' are allowed by
-// the DB check constraint for future use but have no client UI yet, so the
-// generator doesn't offer them.
-const SUPPORTED_ACTIVITY_TYPES = ["match", "drag_drop", "sequence"] as const;
+// app_router.dart's '/play' dispatch) -- 'trace' is allowed by the DB check
+// constraint for future use but has no client UI yet, so the generator
+// doesn't offer it. 'speak' landed with M2's SpeakActivityPage.
+const SUPPORTED_ACTIVITY_TYPES = [
+  "match",
+  "drag_drop",
+  "sequence",
+  "speak",
+] as const;
 type ActivityType = (typeof SUPPORTED_ACTIVITY_TYPES)[number];
 
 function isSupportedActivityType(value: unknown): value is ActivityType {
@@ -514,9 +519,78 @@ async function handleReview(
   return Response.json({ unit_id: unitId, status: "rejected" });
 }
 
+/** M3 curation: edit one drafted item (word/glyph/difficulty) before approve.
+ * Draft-course only -- published content is never editable through this
+ * function, so a compromised teacher account can't rewrite live lessons.
+ * prompt_text and answer move together (the schema requires equality). */
+// deno-lint-ignore no-explicit-any
+async function handleEditItem(
+  admin: any,
+  itemId: string,
+  edits: { prompt_text?: string; glyph?: string; difficulty?: number },
+): Promise<Response> {
+  const update: Record<string, unknown> = {};
+  if (edits.prompt_text !== undefined) {
+    const word = edits.prompt_text.trim();
+    if (!word) {
+      return Response.json({ error: "prompt_text must be non-empty" }, { status: 400 });
+    }
+    update.prompt_text = word;
+    update.answer = word;
+  }
+  if (edits.glyph !== undefined) {
+    const glyph = edits.glyph.trim();
+    const graphemes = Array.from(GLYPH_SEGMENTER.segment(glyph)).length;
+    if (graphemes !== 1) {
+      return Response.json({ error: "glyph must be a single emoji" }, { status: 400 });
+    }
+    update.glyph = glyph;
+  }
+  if (edits.difficulty !== undefined) {
+    if (!Number.isInteger(edits.difficulty) || edits.difficulty < 1 || edits.difficulty > 5) {
+      return Response.json({ error: "difficulty must be an integer 1-5" }, { status: 400 });
+    }
+    update.difficulty = edits.difficulty;
+  }
+  if (Object.keys(update).length === 0) {
+    return Response.json({ error: "nothing to edit" }, { status: 400 });
+  }
+
+  // Confirm the item lives in the draft course before touching it.
+  const { data: itemRow } = await admin
+    .from("items")
+    .select("id, activities(lessons(units(course_id)))")
+    .eq("id", itemId)
+    .maybeSingle();
+  // deno-lint-ignore no-explicit-any
+  const pick = (v: any) => (Array.isArray(v) ? v[0] : v);
+  const courseId = pick(pick(pick(itemRow?.activities)?.lessons)?.units)?.course_id;
+  if (!itemRow || courseId !== DRAFT_COURSE_ID) {
+    return Response.json(
+      { error: "edit failed: item not found (or not in the draft course)" },
+      { status: 404 },
+    );
+  }
+
+  const { error } = await admin.from("items").update(update).eq("id", itemId);
+  if (error) {
+    return Response.json({ error: `edit failed: ${error.message}` }, { status: 502 });
+  }
+  return Response.json({ item_id: itemId, status: "edited", ...update });
+}
+
 export default {
   fetch: withSupabase({ auth: ["user", "publishable"] }, async (req, ctx) => {
-    let body: { action?: string; topic?: string; unit_id?: string; type?: string };
+    let body: {
+      action?: string;
+      topic?: string;
+      unit_id?: string;
+      type?: string;
+      item_id?: string;
+      prompt_text?: string;
+      glyph?: string;
+      difficulty?: number;
+    };
     try {
       body = await req.json();
     } catch {
@@ -524,9 +598,14 @@ export default {
     }
 
     const action = body.action ?? "generate";
-    if (action === "approve" || action === "reject") {
-      if (typeof body.unit_id !== "string" || !body.unit_id.trim()) {
+    if (action === "approve" || action === "reject" || action === "edit_item") {
+      if (action !== "edit_item" && (typeof body.unit_id !== "string" || !body.unit_id.trim())) {
         return Response.json({ error: "unit_id (non-empty string) is required" }, {
+          status: 400,
+        });
+      }
+      if (action === "edit_item" && (typeof body.item_id !== "string" || !body.item_id.trim())) {
+        return Response.json({ error: "item_id (non-empty string) is required" }, {
           status: 400,
         });
       }
@@ -534,7 +613,7 @@ export default {
       // Any other user (including anonymous learners) is forbidden.
       if (ctx.authMode !== "user" || !ctx.userClaims?.id) {
         return Response.json(
-          { error: "forbidden: a teacher account is required to approve or reject" },
+          { error: "forbidden: a teacher account is required for this action" },
           { status: 403 },
         );
       }
@@ -545,11 +624,18 @@ export default {
         .single();
       if (!profile || profile.role !== "teacher") {
         return Response.json(
-          { error: "forbidden: teacher role required to approve or reject" },
+          { error: "forbidden: teacher role required for this action" },
           { status: 403 },
         );
       }
-      return handleReview(ctx.supabaseAdmin, action, body.unit_id);
+      if (action === "edit_item") {
+        return handleEditItem(ctx.supabaseAdmin, body.item_id!, {
+          prompt_text: body.prompt_text,
+          glyph: body.glyph,
+          difficulty: body.difficulty,
+        });
+      }
+      return handleReview(ctx.supabaseAdmin, action, body.unit_id!);
     }
 
     const topic = body.topic;
@@ -671,21 +757,30 @@ export default {
       });
     }
 
-    const { error: itemsError } = await admin.from("items").insert(
-      lesson.items.map((item, i) => ({
-        activity_id: activity.id,
-        prompt_text: item.prompt_text,
-        answer: item.answer,
-        glyph: item.glyph,
-        difficulty: item.difficulty,
-        position: i,
-      })),
-    );
+    // Select ids back (ordered by position) so the client's preview can
+    // reference each row for M3's edit-before-approve curation.
+    const { data: itemRows, error: itemsError } = await admin
+      .from("items")
+      .insert(
+        lesson.items.map((item, i) => ({
+          activity_id: activity.id,
+          prompt_text: item.prompt_text,
+          answer: item.answer,
+          glyph: item.glyph,
+          difficulty: item.difficulty,
+          position: i,
+        })),
+      )
+      .select("id, position");
     if (itemsError) {
       return Response.json({ error: `db write failed (items): ${itemsError.message}` }, {
         status: 502,
       });
     }
+    const idByPosition = new Map<number, string>(
+      // deno-lint-ignore no-explicit-any
+      (itemRows ?? []).map((r: any) => [r.position as number, r.id as string]),
+    );
 
     return Response.json({
       lesson_id: lessonRow.id,
@@ -693,7 +788,8 @@ export default {
       activity_id: activity.id,
       activity_type: activityType,
       lesson_title: lesson.lesson_title,
-      items: lesson.items.map((item) => ({
+      items: lesson.items.map((item, i) => ({
+        id: idByPosition.get(i) ?? null,
         prompt_text: item.prompt_text,
         glyph: item.glyph,
         difficulty: item.difficulty,

@@ -24,7 +24,13 @@ class SequenceActivityPage extends ConsumerStatefulWidget {
 }
 
 class _SequenceActivityPageState extends ConsumerState<SequenceActivityPage> {
-  static const _maxItems = 6;
+  /// Matches the AI generator's MAX_ITEMS (supabase/functions/generate-lesson) --
+  /// every item a lesson claims to teach must actually be playable here, or it
+  /// can never earn a repetition and courseProgressProvider.isPassed() (which
+  /// requires every item to have one) permanently soft-locks the learner on
+  /// this lesson. Previously capped at 6; the slot row and pool now scroll/
+  /// shrink instead, since dropping items silently was a correctness bug.
+  static const _maxItems = 10;
 
   late final List<Item> _correctOrder;
   late final List<Item> _pool;
@@ -106,41 +112,64 @@ class _SequenceActivityPageState extends ConsumerState<SequenceActivityPage> {
           padding: const EdgeInsets.all(AppTheme.gap),
           child: Column(
             children: [
-              // "Built so far" row: one numbered slot per item, filled in order.
+              // "Built so far" row: one numbered slot per item, filled in
+              // order. Horizontally scrollable (rather than Expanded/shrink)
+              // so slots stay a usable size regardless of item count -- up to
+              // 10 for an AI-generated lesson (see _maxItems).
               SizedBox(
                 height: 84,
-                child: Row(
-                  children: [
-                    for (var i = 0; i < _correctOrder.length; i++)
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
-                          child: _SlotTile(
-                            key: Key('slot_$i'),
-                            item: i < _placed.length ? _placed[i] : null,
-                            index: i,
-                          ),
-                        ),
+                child: _correctOrder.length <= 6
+                    ? Row(
+                        children: [
+                          for (var i = 0; i < _correctOrder.length; i++)
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(horizontal: 4),
+                                child: _SlotTile(
+                                  key: Key('slot_$i'),
+                                  item: i < _placed.length ? _placed[i] : null,
+                                  index: i,
+                                ),
+                              ),
+                            ),
+                        ],
+                      )
+                    : ListView(
+                        scrollDirection: Axis.horizontal,
+                        children: [
+                          for (var i = 0; i < _correctOrder.length; i++)
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 4),
+                              child: SizedBox(
+                                width: 76,
+                                child: _SlotTile(
+                                  key: Key('slot_$i'),
+                                  item: i < _placed.length ? _placed[i] : null,
+                                  index: i,
+                                ),
+                              ),
+                            ),
+                        ],
                       ),
-                  ],
-                ),
               ),
               const SizedBox(height: AppTheme.gap * 1.5),
               Expanded(
-                child: Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  alignment: WrapAlignment.center,
-                  children: [
-                    for (final item in _pool)
-                      if (!_placed.any((p) => p.id == item.id))
-                        _PoolTile(
-                          key: ValueKey('pool_${item.id}'),
-                          item: item,
-                          wrong: _wrongTapId == item.id,
-                          onTap: () => _onTap(item),
-                        ),
-                  ],
+                child: SingleChildScrollView(
+                  child: Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    alignment: WrapAlignment.center,
+                    children: [
+                      for (final item in _pool)
+                        if (!_placed.any((p) => p.id == item.id))
+                          _PoolTile(
+                            key: ValueKey('pool_${item.id}'),
+                            item: item,
+                            wrong: _wrongTapId == item.id,
+                            onTap: () => _onTap(item),
+                          ),
+                    ],
+                  ),
                 ),
               ),
             ],

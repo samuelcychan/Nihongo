@@ -1,4 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- M2 F2: on-device speech capture for the "Say the Word" activity.
+         Audio is processed by the platform recognizer only; nothing is
+         recorded or uploaded by the app (see docs/compliance-checklist.md). -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
         android:label="kids_lang"
         android:name="${applicationName}"

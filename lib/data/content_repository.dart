@@ -1,17 +1,23 @@
+import 'dart:convert';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/db/app_database.dart';
 import '../domain/models/content.dart';
 
 /// Reads published content (PRD F4 hierarchy) from Supabase.
 ///
-/// Keeps a last-good in-memory copy so a lesson already opened this session
-/// survives a brief connectivity blip. (Durable offline content caching in
-/// drift is a tracked follow-up; the slice's offline guarantee centres on
-/// never losing learner results — see [ResultsRepository].)
+/// Two cache layers (M2 NFR-offline): a last-good in-memory copy that
+/// survives a brief connectivity blip within a session, plus a durable drift
+/// cache ([AppDatabase.cacheCoursePayload]) so a course fetched once stays
+/// fully playable across restarts with no network at all.
 class ContentRepository {
-  ContentRepository(this._client);
+  // The public `db` param maps to a private field.
+  // ignore: prefer_initializing_formals
+  ContentRepository(this._client, {AppDatabase? db}) : _db = db;
 
   final SupabaseClient _client;
+  final AppDatabase? _db;
   final Map<String, Lesson> _cache = {};
 
   /// Fixed seed lesson id (see supabase/migrations/0002_seed.sql).
@@ -27,6 +33,19 @@ class ContentRepository {
   /// at position 0, so creation time is what actually orders them). Assumes
   /// one lesson per unit, matching both the seed data and the generator.
   Future<List<Lesson>> fetchCourseLessons(String courseId) async {
+    try {
+      final lessons = await _fetchCourseLessonsRemote(courseId);
+      await _cacheCourse(courseId, lessons);
+      return lessons;
+    } catch (_) {
+      // Offline (or backend down): serve the durable cache if we have one.
+      final cached = await _loadCachedCourse(courseId);
+      if (cached != null) return cached;
+      rethrow;
+    }
+  }
+
+  Future<List<Lesson>> _fetchCourseLessonsRemote(String courseId) async {
     final unitRows = await _client
         .from('units')
         .select('id')
@@ -102,6 +121,37 @@ class ContentRepository {
       lessons.add(lesson);
     }
     return lessons;
+  }
+
+  Future<void> _cacheCourse(String courseId, List<Lesson> lessons) async {
+    final db = _db;
+    if (db == null) return;
+    try {
+      await db.cacheCoursePayload(
+        courseId,
+        jsonEncode([for (final l in lessons) l.toCacheMap()]),
+      );
+    } catch (_) {/* cache write failure never breaks a successful fetch */}
+  }
+
+  Future<List<Lesson>?> _loadCachedCourse(String courseId) async {
+    final db = _db;
+    if (db == null) return null;
+    try {
+      final payload = await db.cachedCoursePayload(courseId);
+      if (payload == null) return null;
+      final decoded = jsonDecode(payload) as List;
+      final lessons = [
+        for (final m in decoded)
+          Lesson.fromCacheMap((m as Map).cast<String, dynamic>()),
+      ];
+      for (final l in lessons) {
+        _cache[l.id] = l;
+      }
+      return lessons;
+    } catch (_) {
+      return null; // a corrupt cache row falls through to the original error
+    }
   }
 
   Future<Lesson> fetchLesson(String lessonId) async {

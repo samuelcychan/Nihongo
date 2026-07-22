@@ -6,6 +6,7 @@ import '../../domain/models/content.dart';
 import '../../features/activity_dragdrop/dragdrop_activity_page.dart';
 import '../../features/activity_match/activity_match_page.dart';
 import '../../features/activity_sequence/sequence_activity_page.dart';
+import '../../features/activity_speak/speak_activity_page.dart';
 import '../../features/consent_gate/consent_gate_page.dart';
 import '../../features/learner_home/learner_home_page.dart';
 import '../../features/lesson_generator/lesson_generator_page.dart';
@@ -53,6 +54,7 @@ final appRouter = GoRouter(
         return switch (type) {
           'drag_drop' => DragDropActivityPage(lesson: lesson),
           'sequence' => SequenceActivityPage(lesson: lesson),
+          'speak' => SpeakActivityPage(lesson: lesson),
           _ => ActivityMatchPage(lesson: lesson),
         };
       },

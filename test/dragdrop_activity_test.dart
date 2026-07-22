@@ -28,6 +28,7 @@ class _FakeResults implements ResultsSink {
     required bool correct,
     required int attempts,
     Duration? responseTime,
+    double? pronunciationScore,
   }) async {
     calls++;
     lastCorrect = correct;
@@ -58,7 +59,27 @@ Lesson _lesson() => const Lesson(
       ],
     );
 
-Future<_FakeResults> _pump(WidgetTester tester) async {
+// Nine items -- more than the old hardcoded 5-pair cap -- to guard against
+// the completability bug where AI-generated lessons (up to 10 items) could
+// never be marked passed because some items were never shown/playable.
+Lesson _bigLesson() => Lesson(
+      id: 'L2',
+      title: 'Big Lesson',
+      activities: [
+        Activity(
+          id: 'A2',
+          lessonId: 'L2',
+          type: 'drag_drop',
+          title: 'Drag',
+          items: [
+            for (var i = 1; i <= 9; i++)
+              Item(id: 'b$i', activityId: 'A2', answer: 'w$i', promptText: 'w$i', glyph: '⭐'),
+          ],
+        ),
+      ],
+    );
+
+Future<_FakeResults> _pump(WidgetTester tester, {Lesson? lesson}) async {
   final results = _FakeResults();
   await tester.pumpWidget(
     ProviderScope(
@@ -67,7 +88,7 @@ Future<_FakeResults> _pump(WidgetTester tester) async {
         resultsRepositoryProvider.overrideWithValue(results),
         learnerIdProvider.overrideWithValue('test-learner'),
       ],
-      child: MaterialApp(home: DragDropActivityPage(lesson: _lesson())),
+      child: MaterialApp(home: DragDropActivityPage(lesson: lesson ?? _lesson())),
     ),
   );
   await tester.pump();
@@ -117,5 +138,17 @@ void main() {
 
     // Wrong-flash clears itself after the delay.
     await tester.pump(const Duration(milliseconds: 600));
+  });
+
+  testWidgets(
+      'a lesson with more items than the old 5-pair cap shows every item '
+      '(regression: silently-dropped items made lessons unpassable)',
+      (tester) async {
+    await _pump(tester, lesson: _bigLesson());
+
+    for (var i = 1; i <= 9; i++) {
+      expect(find.byKey(Key('drop_target_b$i')), findsOneWidget);
+      expect(find.byKey(Key('draggable_b$i')), findsOneWidget);
+    }
   });
 }

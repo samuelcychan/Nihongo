@@ -18,10 +18,10 @@ working conventions are in [../AGENTS.md](../AGENTS.md). M0.5's build-ready task
 | Milestone | Theme | Stage | Primary PRD coverage |
 |---|---|---|---|
 | **M0** | Vertical slice (architecture proof) | ✅ done | F1🟡 F2🟡 F3🟢 |
-| **M0.5** | AI Lesson Generator | after M0, before M1 | F1(content), F4(reduces) |
-| **M1** | Playable MVP | after M0.5 | F1, F2, NFR-parent, NFR-parity, NFR-safety(gate) |
-| **M2** | Adaptive & voice | after M1 | F2(speech), F3(depth), NFR-offline, NFR-a11y |
-| **M3** | Curation & compliance (v1) | v1 | F4(downscoped), NFR-safety(full), NFR-perf, NFR-a11y(full) |
+| **M0.5** | AI Lesson Generator | ✅ done | F1(content), F4(reduces) |
+| **M1** | Playable MVP | ✅ done | F1, F2, NFR-parent, NFR-parity, NFR-safety(gate) |
+| **M2** | Adaptive & voice | ✅ done | F2(speech), F3(depth), NFR-offline, NFR-a11y |
+| **M3** | Curation & compliance (v1) | 🟡 code done; legal/hardware items open | F4(downscoped), NFR-safety(full), NFR-perf, NFR-a11y(full) |
 
 ---
 
@@ -148,41 +148,50 @@ surface backed by real data — shippable to a test family/classroom.
 - **Exit criteria:** a child completes ≥2 lessons with real media on both iOS and Android;
   parent dashboard shows true numbers; `flutter test` + analyze green; consent gate enforced.
 
-## M2 — Adaptive & voice
+## M2 — Adaptive & voice ✅ (done)
 **Goal:** the app listens and adapts — the differentiating F2/F3 depth.
 
-- **F2 · speech input (on-device first):** implement `SpeechService` (the interface already
-  exists) with platform speech recognition; add a "say the word" activity.
-- **F3 · pronunciation scoring:** populate `learner_item_states.pronunciation_score`; feed it
-  into the SRS quality signal in `SrsScheduler`.
-- **F3 · difficulty depth:** use `nextDifficulty` to actively steer item selection across
-  difficulty bands; tune intervals from real data.
-- **NFR-offline (content):** durable offline **content/media** caching (extend drift beyond
-  results; pre-download a lesson's media).
-- **NFR-a11y:** full **"no-reading" mode** — voice prompts replace all text for pre-readers.
-- **Exit criteria:** pronunciation activity works offline on-device; scores influence
-  scheduling; a lesson is fully playable with no network and no on-screen text.
+- **F2 · speech input** 🟢 `OnDeviceSpeechService` (speech_to_text, platform recognizer,
+  audio never leaves the device) + `SpeakActivityPage` ('speak' type, generator support).
+- **F3 · pronunciation scoring** 🟢 `pronunciationScore` (normalized Levenshtein + containment)
+  persisted to `pronunciation_score`; `qualityFromPronunciation` drives the SRS signal.
+- **F3 · difficulty depth** 🟢 `MatchRoundBuilder` orders by `nextDifficulty`'s target band
+  from rolling accuracy (due items still lead). Interval tuning from real data stays open —
+  needs real learner data, not code.
+- **NFR-offline (content)** 🟢 drift `CachedCourses` table; `ContentRepository` serves the
+  last-fetched course when the network fails, across restarts. (Media pre-download deferred:
+  current content is emoji-first, so cached lessons are already fully playable offline.)
+- **NFR-a11y** 🟢 per-learner **no-reading mode** (parent-dashboard toggle): match + speak
+  hide all prompt text and run on audio + pictures alone.
+- **Exit criteria:** met in code — speak activity is on-device (recognizer permitting),
+  scores influence scheduling (unit-tested), and a cached lesson plays offline with no
+  on-screen text in no-reading mode. On-device verification on real hardware recommended
+  (emulators often lack a speech recognizer; the page degrades gracefully there).
 
-## M3 — Curation & compliance (v1)
+## M3 — Curation & compliance (v1) 🟡 (code done; legal/hardware items open)
 **Goal:** teachers can shape content without engineers, and the app is compliant to ship.
 
-- **F4 · teacher curation & override tools (downscoped from full CRUD):** if M0.5's AI
-  generator ships and its translation-correctness mitigation holds up, a full from-scratch
-  authoring CMS is likely unnecessary. Reframe F4 as role-based **curation** — approve,
-  edit, or reject AI-generated lessons; fix a wrong translation; adjust difficulty — rather
-  than a ground-up content-creation UI. Role-based access (`profiles.role` exists) and RLS
-  tightening so teachers write only their own content still apply either way. **Re-evaluate
-  at M3 start against M0.5's actual exit criteria** (3 lessons, all pass validation +
-  translation-correctness mitigation, no uncaught errors on playthrough) — if M0.5 never
-  shipped, or shipped but the mitigation proved unreliable in practice, fall back to the
-  original full-CRUD F4 scope — Course→Unit→Lesson→Activity→Item authoring, media upload,
-  preview → version → publish. (Web or in-app teacher mode either way.)
-- **NFR-safety (full):** COPPA + GDPR-K compliance — real auth/identity, data-minimization
-  review, no behavioral ads, kidSAFE-style posture; replace the M1 stub gate.
-- **NFR-performance:** verify 60fps animations, media caching, fast cold start.
-- **NFR-a11y (full):** colorblind-safe audit, audio cues throughout, large-target audit.
-- **Exit criteria:** a teacher authors + publishes a lesson that a learner plays; compliance
-  checklist signed off; performance budget met on low-end devices.
+- **F4 · teacher curation** 🟢 M0.5's exit criteria held (validation + translation
+  verification + auto-repair proved reliable in practice), so the downscoped curation path
+  applies — no full-CRUD CMS. Shipped: approve / reject (M0.5) + **edit-before-approve**
+  (`edit_item` action in the Edge Function, teacher-role-gated, draft-course-only; word +
+  difficulty edit dialog in the preview). A teacher generates, fixes a word, approves, and
+  a learner plays it — the F4 loop is closed.
+- **NFR-safety (full)** 🟡 code side done — data-minimization review + data inventory in
+  [compliance-checklist.md](compliance-checklist.md); no analytics/ads confirmed; speech
+  stays on-device; RLS least-privilege confirmed. **Open (requires human/legal action,
+  itemized in the checklist):** verifiable parental consent (the M1 gate is a stub by
+  design), privacy policy, store data-safety forms, kidSAFE/Safe-Harbor if pursued, DPA.
+- **NFR-performance** 🟡 audit + fixes in [a11y-perf-audit.md](a11y-perf-audit.md) —
+  bounded first-run sign-in (no more network-bound splash), content cached after first
+  fetch, animation review. **Open:** 60fps + cold-start numbers on real low-end hardware.
+- **NFR-a11y (full)** 🟢 per-surface audit in [a11y-perf-audit.md](a11y-perf-audit.md) —
+  color+icon pairing verified everywhere, audio cues on every feedback path, all tap
+  targets ≥48dp, Semantics labels added where missing (drag-drop). TalkBack/VoiceOver
+  human pass recommended on hardware.
+- **Exit criteria:** teacher-authors-and-learner-plays ✅ (verified end-to-end);
+  compliance checklist exists with the human sign-off items explicitly listed ⏳;
+  performance budget on low-end devices ⏳ (needs hardware).
 
 ---
 

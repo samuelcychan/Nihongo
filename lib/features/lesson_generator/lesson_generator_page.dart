@@ -58,6 +58,43 @@ class _LessonGeneratorPageState extends ConsumerState<LessonGeneratorPage> {
     }
   }
 
+  /// M3 curation: let a signed-in teacher fix a word/difficulty in the draft
+  /// before approving -- the single most valuable edit (a wrong translation)
+  /// without a full authoring CMS.
+  Future<void> _editItem(int index) async {
+    final lesson = _lesson;
+    final item = lesson?.items[index];
+    if (lesson == null || item?.id == null) return;
+    final edited = await showDialog<GeneratedItemPreview>(
+      context: context,
+      builder: (context) => _EditItemDialog(item: item!),
+    );
+    if (edited == null || !mounted) return;
+    try {
+      await ref.read(lessonGeneratorServiceProvider).editItem(
+            item!.id!,
+            promptText:
+                edited.promptText != item.promptText ? edited.promptText : null,
+            difficulty:
+                edited.difficulty != item.difficulty ? edited.difficulty : null,
+          );
+      if (!mounted) return;
+      setState(() {
+        final items = [...lesson.items]..[index] = edited;
+        _lesson = GeneratedLesson(
+          unitId: lesson.unitId,
+          lessonTitle: lesson.lessonTitle,
+          activityType: lesson.activityType,
+          items: items,
+        );
+      });
+    } on LessonGenerationException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   Future<void> _review(bool approve) async {
     final lesson = _lesson;
     if (lesson == null) return;
@@ -142,6 +179,7 @@ class _LessonGeneratorPageState extends ConsumerState<LessonGeneratorPage> {
                 onApprove: () => _review(true),
                 onReject: () => _review(false),
                 onSignIn: () => context.push('/teacher-login'),
+                onEditItem: isTeacher ? _editItem : null,
               ),
             _Status.error => _ErrorCard(
                 message: _errorMessage!,
@@ -247,6 +285,7 @@ class _PreviewCard extends StatelessWidget {
     required this.onApprove,
     required this.onReject,
     required this.onSignIn,
+    this.onEditItem,
   });
 
   final GeneratedLesson lesson;
@@ -255,6 +294,9 @@ class _PreviewCard extends StatelessWidget {
   final VoidCallback onApprove;
   final VoidCallback onReject;
   final VoidCallback onSignIn;
+
+  /// Non-null only for signed-in teachers (M3 curation).
+  final void Function(int index)? onEditItem;
 
   @override
   Widget build(BuildContext context) {
@@ -276,7 +318,8 @@ class _PreviewCard extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, i) {
               final item = lesson.items[i];
-              return Container(
+              final editable = onEditItem != null && item.id != null;
+              final row = Container(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
                 decoration: AppTheme.cardDecoration(),
                 child: Row(
@@ -289,8 +332,20 @@ class _PreviewCard extends StatelessWidget {
                               fontWeight: FontWeight.w600, fontSize: 16)),
                     ),
                     _StarRow(filled: item.difficulty),
+                    if (editable) ...[
+                      const SizedBox(width: 8),
+                      const Icon(Icons.edit_outlined,
+                          size: 18, color: AppTheme.inkFaint),
+                    ],
                   ],
                 ),
+              );
+              if (!editable) return row;
+              return InkWell(
+                key: Key('edit_item_$i'),
+                borderRadius: BorderRadius.circular(14),
+                onTap: () => onEditItem!(i),
+                child: row,
               );
             },
           ),
@@ -357,6 +412,80 @@ class _PreviewCard extends StatelessWidget {
               ),
             ],
           ),
+      ],
+    );
+  }
+}
+
+/// M3 curation dialog: word + difficulty (the two fields a teacher actually
+/// fixes -- a wrong translation or a mis-tagged difficulty).
+class _EditItemDialog extends StatefulWidget {
+  const _EditItemDialog({required this.item});
+
+  final GeneratedItemPreview item;
+
+  @override
+  State<_EditItemDialog> createState() => _EditItemDialogState();
+}
+
+class _EditItemDialogState extends State<_EditItemDialog> {
+  late final TextEditingController _wordController =
+      TextEditingController(text: widget.item.promptText);
+  late int _difficulty = widget.item.difficulty;
+
+  @override
+  void dispose() {
+    _wordController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Edit item'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            key: const Key('edit_word_field'),
+            controller: _wordController,
+            decoration: const InputDecoration(labelText: 'Word'),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              const Text('Difficulty', style: TextStyle(fontSize: 13)),
+              Expanded(
+                child: Slider(
+                  key: const Key('edit_difficulty_slider'),
+                  value: _difficulty.toDouble(),
+                  min: 1,
+                  max: 5,
+                  divisions: 4,
+                  label: '$_difficulty',
+                  onChanged: (v) => setState(() => _difficulty = v.round()),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+        FilledButton(
+          key: const Key('edit_save_button'),
+          onPressed: () {
+            final word = _wordController.text.trim();
+            if (word.isEmpty) return;
+            Navigator.of(context).pop(widget.item
+                .copyWith(promptText: word, difficulty: _difficulty));
+          },
+          child: const Text('Save'),
+        ),
       ],
     );
   }

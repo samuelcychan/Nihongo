@@ -130,6 +130,19 @@ class SrsScheduler {
     return q.clamp(3, 5);
   }
 
+  /// Derives an SM-2 quality (0–5) from a pronunciation score in [0, 1]
+  /// (PRD F3 — the speak activity's scores feed scheduling exactly like
+  /// binary outcomes do). Thresholds mirror [qualityFromOutcome]'s bands:
+  /// >= 0.5 counts as a successful recall (>= 3), below that as a failure.
+  int qualityFromPronunciation(double score) {
+    final s = score.clamp(0.0, 1.0);
+    if (s >= 0.85) return 5;
+    if (s >= 0.7) return 4;
+    if (s >= 0.5) return 3;
+    if (s >= 0.3) return 2;
+    return s > 0 ? 1 : 0;
+  }
+
   /// Adaptive difficulty target for the next item, on the same 1..5 scale the
   /// content is tagged with (PRD F3). Strong recent performance nudges the
   /// learner up; struggling nudges them down, keeping challenge in the zone.

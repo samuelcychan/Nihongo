@@ -825,11 +825,27 @@ class $LearnerSettingsTable extends LearnerSettings
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _noReadingModeMeta = const VerificationMeta(
+    'noReadingMode',
+  );
+  @override
+  late final GeneratedColumn<bool> noReadingMode = GeneratedColumn<bool>(
+    'no_reading_mode',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("no_reading_mode" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     learnerId,
     dailyLimitMinutes,
     consentGiven,
+    noReadingMode,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -869,6 +885,15 @@ class $LearnerSettingsTable extends LearnerSettings
         ),
       );
     }
+    if (data.containsKey('no_reading_mode')) {
+      context.handle(
+        _noReadingModeMeta,
+        noReadingMode.isAcceptableOrUnknown(
+          data['no_reading_mode']!,
+          _noReadingModeMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -890,6 +915,10 @@ class $LearnerSettingsTable extends LearnerSettings
         DriftSqlType.bool,
         data['${effectivePrefix}consent_given'],
       )!,
+      noReadingMode: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}no_reading_mode'],
+      )!,
     );
   }
 
@@ -906,10 +935,15 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
   /// True once a parent/guardian has confirmed the age-gate. Checked before
   /// the first play session; anonymous auth continues underneath either way.
   final bool consentGiven;
+
+  /// M2 NFR-a11y "no-reading" mode: activities hide prompt text and rely on
+  /// audio + pictures only, so pre-readers can play with no on-screen text.
+  final bool noReadingMode;
   const LearnerSetting({
     required this.learnerId,
     required this.dailyLimitMinutes,
     required this.consentGiven,
+    required this.noReadingMode,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -917,6 +951,7 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
     map['learner_id'] = Variable<String>(learnerId);
     map['daily_limit_minutes'] = Variable<int>(dailyLimitMinutes);
     map['consent_given'] = Variable<bool>(consentGiven);
+    map['no_reading_mode'] = Variable<bool>(noReadingMode);
     return map;
   }
 
@@ -925,6 +960,7 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
       learnerId: Value(learnerId),
       dailyLimitMinutes: Value(dailyLimitMinutes),
       consentGiven: Value(consentGiven),
+      noReadingMode: Value(noReadingMode),
     );
   }
 
@@ -937,6 +973,7 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
       learnerId: serializer.fromJson<String>(json['learnerId']),
       dailyLimitMinutes: serializer.fromJson<int>(json['dailyLimitMinutes']),
       consentGiven: serializer.fromJson<bool>(json['consentGiven']),
+      noReadingMode: serializer.fromJson<bool>(json['noReadingMode']),
     );
   }
   @override
@@ -946,6 +983,7 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
       'learnerId': serializer.toJson<String>(learnerId),
       'dailyLimitMinutes': serializer.toJson<int>(dailyLimitMinutes),
       'consentGiven': serializer.toJson<bool>(consentGiven),
+      'noReadingMode': serializer.toJson<bool>(noReadingMode),
     };
   }
 
@@ -953,10 +991,12 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
     String? learnerId,
     int? dailyLimitMinutes,
     bool? consentGiven,
+    bool? noReadingMode,
   }) => LearnerSetting(
     learnerId: learnerId ?? this.learnerId,
     dailyLimitMinutes: dailyLimitMinutes ?? this.dailyLimitMinutes,
     consentGiven: consentGiven ?? this.consentGiven,
+    noReadingMode: noReadingMode ?? this.noReadingMode,
   );
   LearnerSetting copyWithCompanion(LearnerSettingsCompanion data) {
     return LearnerSetting(
@@ -967,6 +1007,9 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
       consentGiven: data.consentGiven.present
           ? data.consentGiven.value
           : this.consentGiven,
+      noReadingMode: data.noReadingMode.present
+          ? data.noReadingMode.value
+          : this.noReadingMode,
     );
   }
 
@@ -975,49 +1018,57 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
     return (StringBuffer('LearnerSetting(')
           ..write('learnerId: $learnerId, ')
           ..write('dailyLimitMinutes: $dailyLimitMinutes, ')
-          ..write('consentGiven: $consentGiven')
+          ..write('consentGiven: $consentGiven, ')
+          ..write('noReadingMode: $noReadingMode')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(learnerId, dailyLimitMinutes, consentGiven);
+  int get hashCode =>
+      Object.hash(learnerId, dailyLimitMinutes, consentGiven, noReadingMode);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       (other is LearnerSetting &&
           other.learnerId == this.learnerId &&
           other.dailyLimitMinutes == this.dailyLimitMinutes &&
-          other.consentGiven == this.consentGiven);
+          other.consentGiven == this.consentGiven &&
+          other.noReadingMode == this.noReadingMode);
 }
 
 class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
   final Value<String> learnerId;
   final Value<int> dailyLimitMinutes;
   final Value<bool> consentGiven;
+  final Value<bool> noReadingMode;
   final Value<int> rowid;
   const LearnerSettingsCompanion({
     this.learnerId = const Value.absent(),
     this.dailyLimitMinutes = const Value.absent(),
     this.consentGiven = const Value.absent(),
+    this.noReadingMode = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LearnerSettingsCompanion.insert({
     required String learnerId,
     this.dailyLimitMinutes = const Value.absent(),
     this.consentGiven = const Value.absent(),
+    this.noReadingMode = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : learnerId = Value(learnerId);
   static Insertable<LearnerSetting> custom({
     Expression<String>? learnerId,
     Expression<int>? dailyLimitMinutes,
     Expression<bool>? consentGiven,
+    Expression<bool>? noReadingMode,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
       if (learnerId != null) 'learner_id': learnerId,
       if (dailyLimitMinutes != null) 'daily_limit_minutes': dailyLimitMinutes,
       if (consentGiven != null) 'consent_given': consentGiven,
+      if (noReadingMode != null) 'no_reading_mode': noReadingMode,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1026,12 +1077,14 @@ class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
     Value<String>? learnerId,
     Value<int>? dailyLimitMinutes,
     Value<bool>? consentGiven,
+    Value<bool>? noReadingMode,
     Value<int>? rowid,
   }) {
     return LearnerSettingsCompanion(
       learnerId: learnerId ?? this.learnerId,
       dailyLimitMinutes: dailyLimitMinutes ?? this.dailyLimitMinutes,
       consentGiven: consentGiven ?? this.consentGiven,
+      noReadingMode: noReadingMode ?? this.noReadingMode,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1048,6 +1101,9 @@ class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
     if (consentGiven.present) {
       map['consent_given'] = Variable<bool>(consentGiven.value);
     }
+    if (noReadingMode.present) {
+      map['no_reading_mode'] = Variable<bool>(noReadingMode.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1060,6 +1116,276 @@ class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
           ..write('learnerId: $learnerId, ')
           ..write('dailyLimitMinutes: $dailyLimitMinutes, ')
           ..write('consentGiven: $consentGiven, ')
+          ..write('noReadingMode: $noReadingMode, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $CachedCoursesTable extends CachedCourses
+    with TableInfo<$CachedCoursesTable, CachedCourse> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $CachedCoursesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _courseIdMeta = const VerificationMeta(
+    'courseId',
+  );
+  @override
+  late final GeneratedColumn<String> courseId = GeneratedColumn<String>(
+    'course_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _payloadMeta = const VerificationMeta(
+    'payload',
+  );
+  @override
+  late final GeneratedColumn<String> payload = GeneratedColumn<String>(
+    'payload',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [courseId, payload, updatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'cached_courses';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<CachedCourse> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('course_id')) {
+      context.handle(
+        _courseIdMeta,
+        courseId.isAcceptableOrUnknown(data['course_id']!, _courseIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_courseIdMeta);
+    }
+    if (data.containsKey('payload')) {
+      context.handle(
+        _payloadMeta,
+        payload.isAcceptableOrUnknown(data['payload']!, _payloadMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_payloadMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {courseId};
+  @override
+  CachedCourse map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return CachedCourse(
+      courseId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}course_id'],
+      )!,
+      payload: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}payload'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $CachedCoursesTable createAlias(String alias) {
+    return $CachedCoursesTable(attachedDatabase, alias);
+  }
+}
+
+class CachedCourse extends DataClass implements Insertable<CachedCourse> {
+  final String courseId;
+  final String payload;
+  final DateTime updatedAt;
+  const CachedCourse({
+    required this.courseId,
+    required this.payload,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['course_id'] = Variable<String>(courseId);
+    map['payload'] = Variable<String>(payload);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    return map;
+  }
+
+  CachedCoursesCompanion toCompanion(bool nullToAbsent) {
+    return CachedCoursesCompanion(
+      courseId: Value(courseId),
+      payload: Value(payload),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory CachedCourse.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return CachedCourse(
+      courseId: serializer.fromJson<String>(json['courseId']),
+      payload: serializer.fromJson<String>(json['payload']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'courseId': serializer.toJson<String>(courseId),
+      'payload': serializer.toJson<String>(payload),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+    };
+  }
+
+  CachedCourse copyWith({
+    String? courseId,
+    String? payload,
+    DateTime? updatedAt,
+  }) => CachedCourse(
+    courseId: courseId ?? this.courseId,
+    payload: payload ?? this.payload,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  CachedCourse copyWithCompanion(CachedCoursesCompanion data) {
+    return CachedCourse(
+      courseId: data.courseId.present ? data.courseId.value : this.courseId,
+      payload: data.payload.present ? data.payload.value : this.payload,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedCourse(')
+          ..write('courseId: $courseId, ')
+          ..write('payload: $payload, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(courseId, payload, updatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is CachedCourse &&
+          other.courseId == this.courseId &&
+          other.payload == this.payload &&
+          other.updatedAt == this.updatedAt);
+}
+
+class CachedCoursesCompanion extends UpdateCompanion<CachedCourse> {
+  final Value<String> courseId;
+  final Value<String> payload;
+  final Value<DateTime> updatedAt;
+  final Value<int> rowid;
+  const CachedCoursesCompanion({
+    this.courseId = const Value.absent(),
+    this.payload = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  CachedCoursesCompanion.insert({
+    required String courseId,
+    required String payload,
+    required DateTime updatedAt,
+    this.rowid = const Value.absent(),
+  }) : courseId = Value(courseId),
+       payload = Value(payload),
+       updatedAt = Value(updatedAt);
+  static Insertable<CachedCourse> custom({
+    Expression<String>? courseId,
+    Expression<String>? payload,
+    Expression<DateTime>? updatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (courseId != null) 'course_id': courseId,
+      if (payload != null) 'payload': payload,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  CachedCoursesCompanion copyWith({
+    Value<String>? courseId,
+    Value<String>? payload,
+    Value<DateTime>? updatedAt,
+    Value<int>? rowid,
+  }) {
+    return CachedCoursesCompanion(
+      courseId: courseId ?? this.courseId,
+      payload: payload ?? this.payload,
+      updatedAt: updatedAt ?? this.updatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (courseId.present) {
+      map['course_id'] = Variable<String>(courseId.value);
+    }
+    if (payload.present) {
+      map['payload'] = Variable<String>(payload.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('CachedCoursesCompanion(')
+          ..write('courseId: $courseId, ')
+          ..write('payload: $payload, ')
+          ..write('updatedAt: $updatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1075,6 +1401,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   late final $LearnerSettingsTable learnerSettings = $LearnerSettingsTable(
     this,
   );
+  late final $CachedCoursesTable cachedCourses = $CachedCoursesTable(this);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1082,6 +1409,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     localItemStates,
     learnerSettings,
+    cachedCourses,
   ];
 }
 
@@ -1460,6 +1788,7 @@ typedef $$LearnerSettingsTableCreateCompanionBuilder =
       required String learnerId,
       Value<int> dailyLimitMinutes,
       Value<bool> consentGiven,
+      Value<bool> noReadingMode,
       Value<int> rowid,
     });
 typedef $$LearnerSettingsTableUpdateCompanionBuilder =
@@ -1467,6 +1796,7 @@ typedef $$LearnerSettingsTableUpdateCompanionBuilder =
       Value<String> learnerId,
       Value<int> dailyLimitMinutes,
       Value<bool> consentGiven,
+      Value<bool> noReadingMode,
       Value<int> rowid,
     });
 
@@ -1491,6 +1821,11 @@ class $$LearnerSettingsTableFilterComposer
 
   ColumnFilters<bool> get consentGiven => $composableBuilder(
     column: $table.consentGiven,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get noReadingMode => $composableBuilder(
+    column: $table.noReadingMode,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1518,6 +1853,11 @@ class $$LearnerSettingsTableOrderingComposer
     column: $table.consentGiven,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get noReadingMode => $composableBuilder(
+    column: $table.noReadingMode,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LearnerSettingsTableAnnotationComposer
@@ -1539,6 +1879,11 @@ class $$LearnerSettingsTableAnnotationComposer
 
   GeneratedColumn<bool> get consentGiven => $composableBuilder(
     column: $table.consentGiven,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get noReadingMode => $composableBuilder(
+    column: $table.noReadingMode,
     builder: (column) => column,
   );
 }
@@ -1583,11 +1928,13 @@ class $$LearnerSettingsTableTableManager
                 Value<String> learnerId = const Value.absent(),
                 Value<int> dailyLimitMinutes = const Value.absent(),
                 Value<bool> consentGiven = const Value.absent(),
+                Value<bool> noReadingMode = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LearnerSettingsCompanion(
                 learnerId: learnerId,
                 dailyLimitMinutes: dailyLimitMinutes,
                 consentGiven: consentGiven,
+                noReadingMode: noReadingMode,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -1595,11 +1942,13 @@ class $$LearnerSettingsTableTableManager
                 required String learnerId,
                 Value<int> dailyLimitMinutes = const Value.absent(),
                 Value<bool> consentGiven = const Value.absent(),
+                Value<bool> noReadingMode = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LearnerSettingsCompanion.insert(
                 learnerId: learnerId,
                 dailyLimitMinutes: dailyLimitMinutes,
                 consentGiven: consentGiven,
+                noReadingMode: noReadingMode,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -1627,6 +1976,168 @@ typedef $$LearnerSettingsTableProcessedTableManager =
       LearnerSetting,
       PrefetchHooks Function()
     >;
+typedef $$CachedCoursesTableCreateCompanionBuilder =
+    CachedCoursesCompanion Function({
+      required String courseId,
+      required String payload,
+      required DateTime updatedAt,
+      Value<int> rowid,
+    });
+typedef $$CachedCoursesTableUpdateCompanionBuilder =
+    CachedCoursesCompanion Function({
+      Value<String> courseId,
+      Value<String> payload,
+      Value<DateTime> updatedAt,
+      Value<int> rowid,
+    });
+
+class $$CachedCoursesTableFilterComposer
+    extends Composer<_$AppDatabase, $CachedCoursesTable> {
+  $$CachedCoursesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get courseId => $composableBuilder(
+    column: $table.courseId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get payload => $composableBuilder(
+    column: $table.payload,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$CachedCoursesTableOrderingComposer
+    extends Composer<_$AppDatabase, $CachedCoursesTable> {
+  $$CachedCoursesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get courseId => $composableBuilder(
+    column: $table.courseId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get payload => $composableBuilder(
+    column: $table.payload,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$CachedCoursesTableAnnotationComposer
+    extends Composer<_$AppDatabase, $CachedCoursesTable> {
+  $$CachedCoursesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get courseId =>
+      $composableBuilder(column: $table.courseId, builder: (column) => column);
+
+  GeneratedColumn<String> get payload =>
+      $composableBuilder(column: $table.payload, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+}
+
+class $$CachedCoursesTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $CachedCoursesTable,
+          CachedCourse,
+          $$CachedCoursesTableFilterComposer,
+          $$CachedCoursesTableOrderingComposer,
+          $$CachedCoursesTableAnnotationComposer,
+          $$CachedCoursesTableCreateCompanionBuilder,
+          $$CachedCoursesTableUpdateCompanionBuilder,
+          (
+            CachedCourse,
+            BaseReferences<_$AppDatabase, $CachedCoursesTable, CachedCourse>,
+          ),
+          CachedCourse,
+          PrefetchHooks Function()
+        > {
+  $$CachedCoursesTableTableManager(_$AppDatabase db, $CachedCoursesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$CachedCoursesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$CachedCoursesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$CachedCoursesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> courseId = const Value.absent(),
+                Value<String> payload = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => CachedCoursesCompanion(
+                courseId: courseId,
+                payload: payload,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String courseId,
+                required String payload,
+                required DateTime updatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => CachedCoursesCompanion.insert(
+                courseId: courseId,
+                payload: payload,
+                updatedAt: updatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$CachedCoursesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $CachedCoursesTable,
+      CachedCourse,
+      $$CachedCoursesTableFilterComposer,
+      $$CachedCoursesTableOrderingComposer,
+      $$CachedCoursesTableAnnotationComposer,
+      $$CachedCoursesTableCreateCompanionBuilder,
+      $$CachedCoursesTableUpdateCompanionBuilder,
+      (
+        CachedCourse,
+        BaseReferences<_$AppDatabase, $CachedCoursesTable, CachedCourse>,
+      ),
+      CachedCourse,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
@@ -1635,4 +2146,6 @@ class $AppDatabaseManager {
       $$LocalItemStatesTableTableManager(_db, _db.localItemStates);
   $$LearnerSettingsTableTableManager get learnerSettings =>
       $$LearnerSettingsTableTableManager(_db, _db.learnerSettings);
+  $$CachedCoursesTableTableManager get cachedCourses =>
+      $$CachedCoursesTableTableManager(_db, _db.cachedCourses);
 }
