@@ -20,6 +20,13 @@ abstract class ResultsSink {
   /// Pushes any locally-queued (unsynced) results to the backend. Safe to call
   /// repeatedly; returns how many rows synced. Called on reconnect.
   Future<int> syncPending(String learnerId);
+
+  /// Restores [learnerId]'s history from Supabase onto this device -- call
+  /// right after logging into an existing account (landing page). Without
+  /// this, a returning user on a fresh install would see zero progress even
+  /// though their account has it: [ContentRepository]/[AppDatabase] never
+  /// pull learner_item_states down on their own, only push.
+  Future<void> pullRemoteProgress(String learnerId);
 }
 
 /// Persists per-item results offline-first, then syncs to Supabase (PRD F3 +
@@ -126,6 +133,38 @@ class ResultsRepository implements ResultsSink {
     if (rows.isEmpty) return;
     if (await _push(rows.first)) {
       await _db.markSynced(learnerId, itemId);
+    }
+  }
+
+  @override
+  Future<void> pullRemoteProgress(String learnerId) async {
+    try {
+      final rows = await _client
+          .from('learner_item_states')
+          .select()
+          .eq('learner_id', learnerId);
+      for (final row in rows) {
+        await _db.upsertState(LocalItemStatesCompanion(
+          learnerId: Value(learnerId),
+          itemId: Value(row['item_id'] as String),
+          correctCount: Value((row['correct_count'] as num?)?.toInt() ?? 0),
+          incorrectCount: Value((row['incorrect_count'] as num?)?.toInt() ?? 0),
+          attempts: Value((row['attempts'] as num?)?.toInt() ?? 0),
+          lastResponseMs: Value((row['last_response_ms'] as num?)?.toInt()),
+          pronunciationScore:
+              Value((row['pronunciation_score'] as num?)?.toDouble()),
+          ease: Value((row['ease'] as num?)?.toDouble() ?? SrsState.defaultEase),
+          intervalDays: Value((row['interval_days'] as num?)?.toDouble() ?? 0),
+          repetitions: Value((row['repetitions'] as num?)?.toInt() ?? 0),
+          dueAt: Value(DateTime.parse(row['due_at'] as String)),
+          updatedAt: Value(DateTime.parse(row['updated_at'] as String)),
+          // Came from the server already -- no need to push it right back.
+          synced: const Value(true),
+        ));
+      }
+    } catch (_) {
+      // Offline or transient -- the account's cloud history just isn't
+      // restored yet. Nothing local is lost; safe to retry later.
     }
   }
 

@@ -16,6 +16,12 @@ class LearnerHomePage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Keep the offline-outbox reconnect listener alive for the app's lifetime.
     ref.watch(connectivitySyncProvider);
+    // Warms up consentGivenProvider so its first real value has landed
+    // before the Play button's playLesson() imperatively ref.reads it --
+    // otherwise a tap on a cold launch can race the stream's first
+    // emission and see the not-yet-loaded (null -> false) value, showing
+    // the consent gate again for a returning user who already passed it.
+    ref.watch(consentGivenProvider);
 
     final courseAsync = ref.watch(courseProgressProvider);
     final progress = ref.watch(progressProvider).value ?? const [];
