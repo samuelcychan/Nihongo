@@ -14,11 +14,16 @@ import '../../domain/models/content.dart';
 /// question a young child is unlikely to answer, common in kids-app consent
 /// flows) plus an explicit guardian confirmation checkbox.
 class ConsentGatePage extends ConsumerStatefulWidget {
-  const ConsentGatePage({super.key, this.pendingLesson});
+  const ConsentGatePage({super.key, this.pendingLesson, this.pendingRoute});
 
   /// The lesson the learner was trying to play when the gate interrupted
   /// them -- forwarded to `/play` once consent is confirmed.
   final Lesson? pendingLesson;
+
+  /// Alternative forward target for gated destinations that aren't playing a
+  /// lesson -- e.g. '/register', since a learner account also collects real
+  /// identity data (an email) and shouldn't bypass this gate either.
+  final String? pendingRoute;
 
   @override
   ConsumerState<ConsentGatePage> createState() => _ConsentGatePageState();
@@ -75,6 +80,8 @@ class _ConsentGatePageState extends ConsumerState<ConsentGatePage> {
     if (!mounted) return;
     if (widget.pendingLesson != null) {
       context.pushReplacement('/play', extra: widget.pendingLesson);
+    } else if (widget.pendingRoute != null) {
+      context.pushReplacement(widget.pendingRoute!);
     } else {
       context.pop();
     }

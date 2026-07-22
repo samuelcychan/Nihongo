@@ -41,6 +41,9 @@ class _FakeResults implements ResultsSink {
 
   @override
   Future<int> syncPending(String learnerId) async => 0;
+
+  @override
+  Future<void> pullRemoteProgress(String learnerId) async {}
 }
 
 /// Scripted speech recognizer: returns queued scores in order.

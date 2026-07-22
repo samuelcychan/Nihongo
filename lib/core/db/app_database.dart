@@ -11,6 +11,12 @@ abstract class ConsentStore {
   Future<void> setConsentGiven(String learnerId, bool given);
 }
 
+/// Where the landing page persists that it's been shown once on this device
+/// -- same narrow-interface rationale as [ConsentStore].
+abstract class LandingStore {
+  Future<void> setHasSeenLanding(String learnerId, bool seen);
+}
+
 /// Local SQLite cache of per-learner SRS state (PRD F3 + offline requirement).
 ///
 /// This table is the offline-first source of truth: every result is written
@@ -54,6 +60,11 @@ class LearnerSettings extends Table {
   /// audio + pictures only, so pre-readers can play with no on-screen text.
   BoolColumn get noReadingMode => boolean().withDefault(const Constant(false))();
 
+  /// True once the landing page (sign up / log in / continue as guest) has
+  /// been shown and dismissed once for this device -- gates the '/' route
+  /// (see app_router.dart), never shown again after a choice is made.
+  BoolColumn get hasSeenLanding => boolean().withDefault(const Constant(false))();
+
   @override
   Set<Column> get primaryKey => {learnerId};
 }
@@ -72,12 +83,12 @@ class CachedCourses extends Table {
 }
 
 @DriftDatabase(tables: [LocalItemStates, LearnerSettings, CachedCourses])
-class AppDatabase extends _$AppDatabase implements ConsentStore {
+class AppDatabase extends _$AppDatabase implements ConsentStore, LandingStore {
   AppDatabase([QueryExecutor? executor])
       : super(executor ?? driftDatabase(name: 'kids_lang'));
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -92,6 +103,9 @@ class AppDatabase extends _$AppDatabase implements ConsentStore {
           if (from < 4) {
             await m.addColumn(learnerSettings, learnerSettings.noReadingMode);
             await m.createTable(cachedCourses);
+          }
+          if (from < 5) {
+            await m.addColumn(learnerSettings, learnerSettings.hasSeenLanding);
           }
         },
       );
@@ -156,6 +170,17 @@ class AppDatabase extends _$AppDatabase implements ConsentStore {
   Future<void> setNoReadingMode(String learnerId, bool enabled) =>
       _upsertSettings(learnerId, noReadingMode: enabled);
 
+  /// Reactive landing-page-seen flag, false when unset (i.e. the landing
+  /// page hasn't been dismissed on this device yet).
+  Stream<bool> watchHasSeenLanding(String learnerId) =>
+      (select(learnerSettings)..where((t) => t.learnerId.equals(learnerId)))
+          .watchSingleOrNull()
+          .map((row) => row?.hasSeenLanding ?? false);
+
+  @override
+  Future<void> setHasSeenLanding(String learnerId, bool seen) =>
+      _upsertSettings(learnerId, hasSeenLanding: seen);
+
   /// M2 NFR-offline content cache: last-fetched lesson JSON for [courseId].
   Future<String?> cachedCoursePayload(String courseId) async {
     final row = await (select(cachedCourses)
@@ -180,6 +205,7 @@ class AppDatabase extends _$AppDatabase implements ConsentStore {
     int? dailyLimitMinutes,
     bool? consentGiven,
     bool? noReadingMode,
+    bool? hasSeenLanding,
   }) async {
     final existing = await (select(learnerSettings)
           ..where((t) => t.learnerId.equals(learnerId)))
@@ -190,6 +216,7 @@ class AppDatabase extends _$AppDatabase implements ConsentStore {
         dailyLimitMinutes: Value(dailyLimitMinutes ?? existing?.dailyLimitMinutes ?? 30),
         consentGiven: Value(consentGiven ?? existing?.consentGiven ?? false),
         noReadingMode: Value(noReadingMode ?? existing?.noReadingMode ?? false),
+        hasSeenLanding: Value(hasSeenLanding ?? existing?.hasSeenLanding ?? false),
       ),
     );
   }

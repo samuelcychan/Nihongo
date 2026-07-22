@@ -840,12 +840,28 @@ class $LearnerSettingsTable extends LearnerSettings
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _hasSeenLandingMeta = const VerificationMeta(
+    'hasSeenLanding',
+  );
+  @override
+  late final GeneratedColumn<bool> hasSeenLanding = GeneratedColumn<bool>(
+    'has_seen_landing',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("has_seen_landing" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     learnerId,
     dailyLimitMinutes,
     consentGiven,
     noReadingMode,
+    hasSeenLanding,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -894,6 +910,15 @@ class $LearnerSettingsTable extends LearnerSettings
         ),
       );
     }
+    if (data.containsKey('has_seen_landing')) {
+      context.handle(
+        _hasSeenLandingMeta,
+        hasSeenLanding.isAcceptableOrUnknown(
+          data['has_seen_landing']!,
+          _hasSeenLandingMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -919,6 +944,10 @@ class $LearnerSettingsTable extends LearnerSettings
         DriftSqlType.bool,
         data['${effectivePrefix}no_reading_mode'],
       )!,
+      hasSeenLanding: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}has_seen_landing'],
+      )!,
     );
   }
 
@@ -939,11 +968,17 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
   /// M2 NFR-a11y "no-reading" mode: activities hide prompt text and rely on
   /// audio + pictures only, so pre-readers can play with no on-screen text.
   final bool noReadingMode;
+
+  /// True once the landing page (sign up / log in / continue as guest) has
+  /// been shown and dismissed once for this device -- gates the '/' route
+  /// (see app_router.dart), never shown again after a choice is made.
+  final bool hasSeenLanding;
   const LearnerSetting({
     required this.learnerId,
     required this.dailyLimitMinutes,
     required this.consentGiven,
     required this.noReadingMode,
+    required this.hasSeenLanding,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -952,6 +987,7 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
     map['daily_limit_minutes'] = Variable<int>(dailyLimitMinutes);
     map['consent_given'] = Variable<bool>(consentGiven);
     map['no_reading_mode'] = Variable<bool>(noReadingMode);
+    map['has_seen_landing'] = Variable<bool>(hasSeenLanding);
     return map;
   }
 
@@ -961,6 +997,7 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
       dailyLimitMinutes: Value(dailyLimitMinutes),
       consentGiven: Value(consentGiven),
       noReadingMode: Value(noReadingMode),
+      hasSeenLanding: Value(hasSeenLanding),
     );
   }
 
@@ -974,6 +1011,7 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
       dailyLimitMinutes: serializer.fromJson<int>(json['dailyLimitMinutes']),
       consentGiven: serializer.fromJson<bool>(json['consentGiven']),
       noReadingMode: serializer.fromJson<bool>(json['noReadingMode']),
+      hasSeenLanding: serializer.fromJson<bool>(json['hasSeenLanding']),
     );
   }
   @override
@@ -984,6 +1022,7 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
       'dailyLimitMinutes': serializer.toJson<int>(dailyLimitMinutes),
       'consentGiven': serializer.toJson<bool>(consentGiven),
       'noReadingMode': serializer.toJson<bool>(noReadingMode),
+      'hasSeenLanding': serializer.toJson<bool>(hasSeenLanding),
     };
   }
 
@@ -992,11 +1031,13 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
     int? dailyLimitMinutes,
     bool? consentGiven,
     bool? noReadingMode,
+    bool? hasSeenLanding,
   }) => LearnerSetting(
     learnerId: learnerId ?? this.learnerId,
     dailyLimitMinutes: dailyLimitMinutes ?? this.dailyLimitMinutes,
     consentGiven: consentGiven ?? this.consentGiven,
     noReadingMode: noReadingMode ?? this.noReadingMode,
+    hasSeenLanding: hasSeenLanding ?? this.hasSeenLanding,
   );
   LearnerSetting copyWithCompanion(LearnerSettingsCompanion data) {
     return LearnerSetting(
@@ -1010,6 +1051,9 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
       noReadingMode: data.noReadingMode.present
           ? data.noReadingMode.value
           : this.noReadingMode,
+      hasSeenLanding: data.hasSeenLanding.present
+          ? data.hasSeenLanding.value
+          : this.hasSeenLanding,
     );
   }
 
@@ -1019,14 +1063,20 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
           ..write('learnerId: $learnerId, ')
           ..write('dailyLimitMinutes: $dailyLimitMinutes, ')
           ..write('consentGiven: $consentGiven, ')
-          ..write('noReadingMode: $noReadingMode')
+          ..write('noReadingMode: $noReadingMode, ')
+          ..write('hasSeenLanding: $hasSeenLanding')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(learnerId, dailyLimitMinutes, consentGiven, noReadingMode);
+  int get hashCode => Object.hash(
+    learnerId,
+    dailyLimitMinutes,
+    consentGiven,
+    noReadingMode,
+    hasSeenLanding,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1034,7 +1084,8 @@ class LearnerSetting extends DataClass implements Insertable<LearnerSetting> {
           other.learnerId == this.learnerId &&
           other.dailyLimitMinutes == this.dailyLimitMinutes &&
           other.consentGiven == this.consentGiven &&
-          other.noReadingMode == this.noReadingMode);
+          other.noReadingMode == this.noReadingMode &&
+          other.hasSeenLanding == this.hasSeenLanding);
 }
 
 class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
@@ -1042,12 +1093,14 @@ class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
   final Value<int> dailyLimitMinutes;
   final Value<bool> consentGiven;
   final Value<bool> noReadingMode;
+  final Value<bool> hasSeenLanding;
   final Value<int> rowid;
   const LearnerSettingsCompanion({
     this.learnerId = const Value.absent(),
     this.dailyLimitMinutes = const Value.absent(),
     this.consentGiven = const Value.absent(),
     this.noReadingMode = const Value.absent(),
+    this.hasSeenLanding = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   LearnerSettingsCompanion.insert({
@@ -1055,6 +1108,7 @@ class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
     this.dailyLimitMinutes = const Value.absent(),
     this.consentGiven = const Value.absent(),
     this.noReadingMode = const Value.absent(),
+    this.hasSeenLanding = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : learnerId = Value(learnerId);
   static Insertable<LearnerSetting> custom({
@@ -1062,6 +1116,7 @@ class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
     Expression<int>? dailyLimitMinutes,
     Expression<bool>? consentGiven,
     Expression<bool>? noReadingMode,
+    Expression<bool>? hasSeenLanding,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -1069,6 +1124,7 @@ class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
       if (dailyLimitMinutes != null) 'daily_limit_minutes': dailyLimitMinutes,
       if (consentGiven != null) 'consent_given': consentGiven,
       if (noReadingMode != null) 'no_reading_mode': noReadingMode,
+      if (hasSeenLanding != null) 'has_seen_landing': hasSeenLanding,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -1078,6 +1134,7 @@ class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
     Value<int>? dailyLimitMinutes,
     Value<bool>? consentGiven,
     Value<bool>? noReadingMode,
+    Value<bool>? hasSeenLanding,
     Value<int>? rowid,
   }) {
     return LearnerSettingsCompanion(
@@ -1085,6 +1142,7 @@ class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
       dailyLimitMinutes: dailyLimitMinutes ?? this.dailyLimitMinutes,
       consentGiven: consentGiven ?? this.consentGiven,
       noReadingMode: noReadingMode ?? this.noReadingMode,
+      hasSeenLanding: hasSeenLanding ?? this.hasSeenLanding,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -1104,6 +1162,9 @@ class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
     if (noReadingMode.present) {
       map['no_reading_mode'] = Variable<bool>(noReadingMode.value);
     }
+    if (hasSeenLanding.present) {
+      map['has_seen_landing'] = Variable<bool>(hasSeenLanding.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -1117,6 +1178,7 @@ class LearnerSettingsCompanion extends UpdateCompanion<LearnerSetting> {
           ..write('dailyLimitMinutes: $dailyLimitMinutes, ')
           ..write('consentGiven: $consentGiven, ')
           ..write('noReadingMode: $noReadingMode, ')
+          ..write('hasSeenLanding: $hasSeenLanding, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1789,6 +1851,7 @@ typedef $$LearnerSettingsTableCreateCompanionBuilder =
       Value<int> dailyLimitMinutes,
       Value<bool> consentGiven,
       Value<bool> noReadingMode,
+      Value<bool> hasSeenLanding,
       Value<int> rowid,
     });
 typedef $$LearnerSettingsTableUpdateCompanionBuilder =
@@ -1797,6 +1860,7 @@ typedef $$LearnerSettingsTableUpdateCompanionBuilder =
       Value<int> dailyLimitMinutes,
       Value<bool> consentGiven,
       Value<bool> noReadingMode,
+      Value<bool> hasSeenLanding,
       Value<int> rowid,
     });
 
@@ -1826,6 +1890,11 @@ class $$LearnerSettingsTableFilterComposer
 
   ColumnFilters<bool> get noReadingMode => $composableBuilder(
     column: $table.noReadingMode,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get hasSeenLanding => $composableBuilder(
+    column: $table.hasSeenLanding,
     builder: (column) => ColumnFilters(column),
   );
 }
@@ -1858,6 +1927,11 @@ class $$LearnerSettingsTableOrderingComposer
     column: $table.noReadingMode,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<bool> get hasSeenLanding => $composableBuilder(
+    column: $table.hasSeenLanding,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$LearnerSettingsTableAnnotationComposer
@@ -1884,6 +1958,11 @@ class $$LearnerSettingsTableAnnotationComposer
 
   GeneratedColumn<bool> get noReadingMode => $composableBuilder(
     column: $table.noReadingMode,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<bool> get hasSeenLanding => $composableBuilder(
+    column: $table.hasSeenLanding,
     builder: (column) => column,
   );
 }
@@ -1929,12 +2008,14 @@ class $$LearnerSettingsTableTableManager
                 Value<int> dailyLimitMinutes = const Value.absent(),
                 Value<bool> consentGiven = const Value.absent(),
                 Value<bool> noReadingMode = const Value.absent(),
+                Value<bool> hasSeenLanding = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LearnerSettingsCompanion(
                 learnerId: learnerId,
                 dailyLimitMinutes: dailyLimitMinutes,
                 consentGiven: consentGiven,
                 noReadingMode: noReadingMode,
+                hasSeenLanding: hasSeenLanding,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -1943,12 +2024,14 @@ class $$LearnerSettingsTableTableManager
                 Value<int> dailyLimitMinutes = const Value.absent(),
                 Value<bool> consentGiven = const Value.absent(),
                 Value<bool> noReadingMode = const Value.absent(),
+                Value<bool> hasSeenLanding = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => LearnerSettingsCompanion.insert(
                 learnerId: learnerId,
                 dailyLimitMinutes: dailyLimitMinutes,
                 consentGiven: consentGiven,
                 noReadingMode: noReadingMode,
+                hasSeenLanding: hasSeenLanding,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0

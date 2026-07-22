@@ -36,6 +36,9 @@ class _FakeResults implements ResultsSink {
 
   @override
   Future<int> syncPending(String learnerId) async => 0;
+
+  @override
+  Future<void> pullRemoteProgress(String learnerId) async {}
 }
 
 // Three items so filling one slot doesn't finish the whole sequence -- same

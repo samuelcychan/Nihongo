@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/audio/audio_service.dart';
+import '../core/auth/learner_auth_service.dart';
+import '../core/auth/supabase_learner_auth_service.dart';
 import '../core/db/app_database.dart';
 import '../core/speech/on_device_speech_service.dart';
 import '../core/speech/speech_service.dart';
@@ -64,6 +66,19 @@ final learnerIdProvider = Provider<String>((ref) {
 /// the M0.5 teacher sign-in swapping out the default anonymous session.
 final authStateProvider = StreamProvider<AuthState>((ref) {
   return ref.watch(supabaseClientProvider).auth.onAuthStateChange;
+});
+
+/// Learner account registration/login (landing page).
+final learnerAuthServiceProvider = Provider<LearnerAuthService>(
+  (ref) => SupabaseLearnerAuthService(ref.watch(supabaseClientProvider)),
+);
+
+/// True once the current session is a real (non-anonymous) learner account
+/// -- distinct from [isTeacherProvider], which checks role, not identity.
+final isRegisteredLearnerProvider = Provider<bool>((ref) {
+  ref.watch(authStateProvider);
+  final user = ref.watch(supabaseClientProvider).auth.currentUser;
+  return user != null && !user.isAnonymous;
 });
 
 /// True once the signed-in user is confirmed as a teacher via `profiles.role`.
@@ -180,12 +195,24 @@ final consentGivenProvider = StreamProvider<bool>((ref) {
 /// database backend.
 final consentStoreProvider = Provider<ConsentStore>((ref) => ref.watch(appDatabaseProvider));
 
+/// Narrow write-only view of [appDatabaseProvider] for the landing page
+/// (see [LandingStore]) -- same testability rationale as [consentStoreProvider].
+final landingStoreProvider = Provider<LandingStore>((ref) => ref.watch(appDatabaseProvider));
+
 /// M2 NFR-a11y "no-reading" mode: when true, activities hide prompt text and
 /// rely on audio + pictures only (toggled from the parent dashboard).
 final noReadingModeProvider = StreamProvider<bool>((ref) {
   final db = ref.watch(appDatabaseProvider);
   final learnerId = ref.watch(learnerIdProvider);
   return db.watchNoReadingMode(learnerId);
+});
+
+/// Whether the landing page (sign up / log in / continue as guest) has been
+/// shown and dismissed on this device yet -- gates the '/' route.
+final hasSeenLandingProvider = StreamProvider<bool>((ref) {
+  final db = ref.watch(appDatabaseProvider);
+  final learnerId = ref.watch(learnerIdProvider);
+  return db.watchHasSeenLanding(learnerId);
 });
 
 /// Drains the offline outbox on reconnect. Kept alive by watching it from the
@@ -225,4 +252,7 @@ class _NoopResultsSink implements ResultsSink {
 
   @override
   Future<int> syncPending(String learnerId) async => 0;
+
+  @override
+  Future<void> pullRemoteProgress(String learnerId) async {}
 }
